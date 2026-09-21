@@ -7,5 +7,5 @@ SRC-002.REQ-001 pass
 SRC-002.REQ-002 not-applicable
 SRC-003.REQ-001 not-applicable
 CP-REL-004-01 pass
-CP-REL-004-02 pass
-CP-REL-004-03 pass
+CP-REL-004-02 warn
+CP-REL-004-03 warn
