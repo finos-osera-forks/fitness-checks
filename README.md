@@ -132,7 +132,7 @@ Actions take no inputs: the workflow sets the `OSERA_*` environment once and eve
 ## Testing
 
 - [lint](.github/workflows/lint.yaml): actionlint (release binary, checksum pinned) on the workflows, shellcheck on every action's bash.
-- [e2e](.github/workflows/e2e.yaml): runs the fitness workflow itself against two reference repositories at their release tags (the workflow honours the `reference` input only when its caller is the library): the two dev line forks, `patch-args4j` and `patch-jopt-simple` (DEV ONLY, libraries OSERA will never patch, both laid out the way the standard asks), each compared with its expected list under [`e2e/`](e2e/). The known mistakes fixture went with the dev clean up of 16 Sept; a fork laid out wrong is not covered by e2e for now. A check that cannot run at all records `not-tested` rather than disappearing from the result.
+- [e2e](.github/workflows/e2e.yaml): runs the fitness workflow itself against two reference repositories in the dev organisation at their release tags (the workflow honours the `reference` input only when its caller is the library), forks of libraries far from any line OSERA carries: the known good `patch-jfiglet`, laid out the way the standard asks, and the known bad `patch-emoji-java`, one mistake per blocking check (the release tag on no `patch/` branch, the baseline at the release commit, a fix with no upstream link, no test record), each compared with its expected list under [`e2e/`](e2e/). A check that cannot run at all records `not-tested` rather than disappearing from the result.
 
 ## Notes
 

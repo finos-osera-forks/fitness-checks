@@ -4,8 +4,8 @@ FORK-002.REQ-001 fail
 FORK-003.REQ-001 fail
 REL-001.REQ-001 fail
 SRC-002.REQ-001 fail
-SRC-002.REQ-002 not-tested
-SRC-003.REQ-001 not-tested
+SRC-002.REQ-002 not-applicable
+SRC-003.REQ-001 not-applicable
 CP-REL-004-01 pass
 CP-REL-004-02 warn
 CP-REL-004-03 warn
