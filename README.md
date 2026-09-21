@@ -30,7 +30,7 @@ The [fitness](.github/workflows/fitness.yaml) workflow checks a patch repository
 - Writes `result.json` with the [fitness page](https://standards.osera.finos.org/fitness/)'s fields: one entry per requirement saying what was expected, what was observed and the commands and outputs that showed it, one status per standard, the proposals underneath. Records are written outside the checkout, so nothing a producer commits can pre fill them.
 - Attests `result.json` with GitHub Attestations: an in-toto statement, predicate type `https://osera.finos.org/fitness-result/v1`, signed with the workflow's OIDC identity through Sigstore, stored by GitHub with the repository.
 - Attests the same result a second time under a subject the gate can compute from the tag alone: the SHA256 of the tagged commit id (subject name `git:<owner>/<repo>@<commit>`). The gate gets the commit for the tag from GitHub, hashes it, fetches the attestation by that digest, verifies signer, source and commit, and reads the result from the predicate. Nothing from the producer, no run to pick, no artifact retention.
-- Uploads `result.json` and the Sigstore bundle as a workflow artifact, for humans.
+- Uploads `result.json`, the Sigstore bundle and the producer's evidence file (`patch-evidence.yaml`, a copy of `.osera/patch-evidence.yaml` at the tag) as a workflow artifact. The result names the evidence file by its SHA256 (`evidence_file.digest`), so the signature on the result covers it: the gate takes the evidence from this artifact, checks the digest, publishes it next to the promoted jar, and refuses a release whose result names none.
 - Fails the run when any blocking check failed or could not run.
 
 Example usage, the file a patch repository carries on its patch branch ([template](templates/osera-fitness.yaml)):
@@ -112,6 +112,7 @@ Actions take no inputs: the workflow sets the `OSERA_*` environment once and eve
   "standard_pack": "OSERA-SP-0.1.0", "pack_checksum": null,
   "repository": "dev-finos-osera-forks/patch-commons-codec", "release": "v1.16.0+osera-patch.001", "commit": "5c4ae60a...",
   "artifact_digest": null, "library": "finos-osera-forks/fitness-checks@4dcdf38...", "producer": "controlplane-dv",
+  "producer_accounts": {"registry": null, "observed": {"tag_actor": "d1gital-f", "upload_account": null}},
   "result": "fail",
   "signature": "see the GitHub artifact attestation on this file",
   "standards": [{"standard": "FORK-003", "standard_version": "0.1.0", "status": "fail"}],
@@ -126,7 +127,7 @@ Actions take no inputs: the workflow sets the `OSERA_*` environment once and eve
 }
 ```
 
-`expected` is the rule in words with the actual values in it, `observed` what the repository showed, `evidence` the commands that showed it with their real output (first 40 lines). One rollup everywhere: any fail is a fail, then warn, then not-tested, then pass; not-applicable only when everything underneath is. The signed copy lives in GitHub's attestation store for the patch repository (and, for a public repository, in Sigstore's transparency log), under two subjects: the digest of `result.json`, for `gh attestation verify result.json`, and the SHA256 of the tagged commit id, for the gate. The gate fetches and verifies it at upload time and keeps it with the artifact. To find it by hand: `printf '%s' <commit> | sha256sum`, then `gh api repos/<owner>/<repo>/attestations/sha256:<digest>`.
+`producer_accounts` is the fitness page's REL-004.REQ-002 block: `registry` is the producer's `staging_account` and `github_users` copied from the registry entry (null when the producer has no entry, the REL-004 proposals say so), `observed.tag_actor` the GitHub account that pushed the release tag (`github.actor` of the push event that started the run), `observed.upload_account` null here, the gate fills it at upload time. `expected` is the rule in words with the actual values in it, `observed` what the repository showed, `evidence` the commands that showed it with their real output (first 40 lines). One rollup everywhere: any fail is a fail, then warn, then not-tested, then pass; not-applicable only when everything underneath is. The signed copy lives in GitHub's attestation store for the patch repository (and, for a public repository, in Sigstore's transparency log), under two subjects: the digest of `result.json`, for `gh attestation verify result.json`, and the SHA256 of the tagged commit id, for the gate. The gate fetches and verifies it at upload time and keeps it with the artifact. To find it by hand: `printf '%s' <commit> | sha256sum`, then `gh api repos/<owner>/<repo>/attestations/sha256:<digest>`.
 
 ## Testing
 

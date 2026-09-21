@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Builds result.json from the per requirement records (jq -s: the input is the array of all records).
-# Arguments: $pack $pack_checksum $repo $release $commit $producer $library $registry_ref $rehearsal.
+# Arguments: $pack $pack_checksum $repo $release $commit $producer $library $registry_ref $evidence_sha $rehearsal
+#            $registry_entry (JSON: the producer's staging_account and github_users copied from the registry, or null) $tag_actor.
 
 # The one rollup, used per standard and at the top: any fail is a fail, then warn, then not-tested, then pass;
 # not-applicable only when everything underneath is.
@@ -30,8 +31,18 @@ def rollup:
     release: $release,
     commit: $commit,
     artifact_digest: null,
+    evidence_file: (if $evidence_sha == "" then null else {path: ".osera/patch-evidence.yaml", artifact: "patch-evidence.yaml", digest: $evidence_sha} end),
     library: (if $library == "" then null else $library end),
     producer: (if $producer == "" then null else $producer end),
+    # the fitness page's producer_accounts (REL-004.REQ-002): the registry entry copied, what the run observed;
+    # the upload account is the gate's to fill, null here
+    producer_accounts: {
+      registry: $registry_entry,
+      observed: {
+        tag_actor: (if $tag_actor == "" then null else $tag_actor end),
+        upload_account: null
+      }
+    },
     result: ($standards | rollup),
     signature: (if $rehearsal == "true" then "rehearsal, not signed: the gate never accepts this result" else "see the GitHub artifact attestation on this file" end),
     standards: $standards,

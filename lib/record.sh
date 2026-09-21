@@ -38,8 +38,10 @@ mkdir -p "$OSERA_RESULTS_DIR"
 
 # derived from the release tag, two forms (OSERA-SP-0.1.0):
 #   generic  v2.14.2+osera-patch.001      -> 2.14.2,      2.14.x, v2.14.2+patch.baseline
-#   Java     v5.3.39.1-osera-00001        -> 5.3.39,      5.3.x,  v5.3.39+patch.baseline   (REL-003-JAVA, numeric base)
-#   Java     v5.6.15.Final-osera-00001    -> 5.6.15.Final, 5.6.x, v5.6.15.Final+patch.baseline (qualified base)
+#   Java     v5.3.39.1-osera-00001        -> 5.3.39,      5.3.x,  v5.3.39+patch.baseline   (REL-003-JAVA: the .N the patch added is dropped)
+#   Java     v1.33.1-osera-00001          -> 1.33,        1.33.x, v1.33+patch.baseline     (a two part upstream, the same rule)
+#   Java     v5.6.15.Final-osera-00001    -> 5.6.15.Final, 5.6.x, v5.6.15.Final+patch.baseline (qualified base, no .N)
+# The Java rule is the gate's (REL-003-JAVA.CHECK-001): the shortest base, then an optional .N, then -osera-NNNNN.
 upstream_version_of() {
   local tag="$1"
   local version
@@ -54,9 +56,9 @@ upstream_version_of() {
   # 3. Java form: drop the -osera-NNNNN suffix
   if [[ "$version" == *-osera-[0-9]* ]]; then
     version="${version%-osera-*}"
-    # 4. numeric base: a fourth numeric component is the OSGi qualifier added by the patch, drop it
-    if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      version="${version%.*}"
+    # 4. the .N the patch added, dropped whatever the upstream's number of components (the gate's rule)
+    if [[ "$version" =~ ^(.+)\.[0-9]+$ ]]; then
+      version="${BASH_REMATCH[1]}"
     fi
     printf '%s\n' "$version"
     return 0

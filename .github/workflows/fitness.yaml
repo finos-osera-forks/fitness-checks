@@ -229,7 +229,9 @@ jobs:
           predicate-type: https://osera.finos.org/fitness-result/v1
           predicate-path: ${{ steps.result.outputs.path }}
 
-      # 6. For people: the result and its Sigstore bundle as a workflow artifact.
+      # 6. For people and for the gate: the result, its Sigstore bundle and the producer's evidence file as a
+      #    workflow artifact. The result names the evidence file by its digest, so the signature on the result
+      #    covers the evidence too; the gate publishes it next to the promoted jar from here.
       - name: Keep the bundle next to the result
         if: ${{ !inputs.rehearsal }}
         env:
@@ -242,6 +244,7 @@ jobs:
           path: |
             ${{ runner.temp }}/osera-results/result.json
             ${{ runner.temp }}/osera-results/result.sigstore.json
+            ${{ runner.temp }}/osera-results/patch-evidence.yaml
 
       # 7. The verdict: a producer's run is red when a blocking check failed or could not run.
       #    When the library tests itself, the e2e compare job decides instead.
