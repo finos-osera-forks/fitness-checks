@@ -2,10 +2,11 @@
 # Built by ControlPlane for the FINOS OSERA Exchange.
 # SPDX-License-Identifier: Apache-2.0
 #
-# The fitness workflow run against two frozen reference repositories at their release tags, the two dev line forks
-# in the dev organisation (patch-args4j and patch-jopt-simple, libraries OSERA will never patch; FORK-001 fails there on
-# purpose, the library expects finos-osera-forks), and every status compared with
-# the expected list under e2e/. Green before v1 moves.
+# The fitness workflow run against three frozen reference repositories at their release tags in the dev organisation:
+# two known good, the dev line forks patch-args4j and patch-jopt-simple, and the known bad patch-picocli, one mistake
+# per blocking check (the release tag on no patch/ branch, the baseline at the release commit, a fix with no upstream
+# link, no test record). Libraries OSERA will never patch; FORK-001 fails on all three on purpose, the library expects
+# finos-osera-forks. Every status is compared with the expected list under e2e/. Green before v1 moves.
 name: e2e
 
 on:
@@ -36,8 +37,17 @@ jobs:
     with:
       tag: v5.0.4.2-osera-00002
       reference: dev-finos-osera-forks/patch-jopt-simple
+  mistakes:
+    uses: ./.github/workflows/fitness.yaml
+    permissions:
+      contents: read # for checking out the reference.
+      id-token: write # for creating OIDC tokens for signing.
+      attestations: write # for GitHub Attestations.
+    with:
+      tag: v4.7.7.1-osera-00001
+      reference: dev-finos-osera-forks/patch-picocli
   compare:
-    needs: [good, second]
+    needs: [good, second, mistakes]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04 # pinned image, not the moving latest
     permissions:
@@ -54,7 +64,7 @@ jobs:
       - name: Compare with the expected statuses
         run: |
           failed=0
-          for ref in patch-args4j patch-jopt-simple; do
+          for ref in patch-args4j patch-jopt-simple patch-picocli; do
             jq -r '(.checks + .proposals)[] | "\(.requirement) \(.status)"' "osera-fitness-result-$ref/result.json" > "actual-$ref.txt"
             if diff "e2e/expected-$ref.txt" "actual-$ref.txt"; then
               echo "e2e $ref: every status as expected"
