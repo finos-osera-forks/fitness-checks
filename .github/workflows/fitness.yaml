@@ -196,6 +196,37 @@ jobs:
         uses: ./.osera-fitness/.github/actions/proposal-rel-004-accounts-in-entry
         continue-on-error: true
 
+      # 4b. The observe checks, one action per requirement of the pack's observe_standards. They run and report,
+      #     they are kept out of the rollup and out of the checks the gate reads, and they never fail the run.
+      #     REL-007 has no action here: it is about the artifact's digest, so the gate checks it at promotion.
+      - name: FORK-004.REQ-001 (observe)
+        uses: ./.osera-fitness/.github/actions/fork-004-req-001
+        continue-on-error: true
+      - name: FORK-004.REQ-002 (observe)
+        uses: ./.osera-fitness/.github/actions/fork-004-req-002
+        continue-on-error: true
+      - name: FORK-004.REQ-003 (observe)
+        uses: ./.osera-fitness/.github/actions/fork-004-req-003
+        continue-on-error: true
+      - name: SRC-001.REQ-001 (observe)
+        uses: ./.osera-fitness/.github/actions/src-001-req-001
+        continue-on-error: true
+      - name: REL-006.REQ-001 (observe)
+        uses: ./.osera-fitness/.github/actions/rel-006-req-001
+        continue-on-error: true
+      - name: REL-008.REQ-001 (observe)
+        uses: ./.osera-fitness/.github/actions/rel-008-req-001
+        continue-on-error: true
+      - name: REL-008.REQ-002 (observe)
+        uses: ./.osera-fitness/.github/actions/rel-008-req-002
+        continue-on-error: true
+      - name: EVD-001.REQ-001 (observe)
+        uses: ./.osera-fitness/.github/actions/evd-001-req-001
+        continue-on-error: true
+      - name: APP-001.REQ-001 (observe)
+        uses: ./.osera-fitness/.github/actions/app-001-req-001
+        continue-on-error: true
+
       # 5. The result, signed twice with the workflow's identity: once on the file, for people (gh attestation verify),
       #    once under the SHA256 of the tagged commit id, for the gate, which computes that digest from the tag alone.
       - name: Write the result

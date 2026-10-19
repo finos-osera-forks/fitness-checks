@@ -27,6 +27,7 @@ The [fitness](.github/workflows/fitness.yaml) workflow checks a patch repository
 - Checks out the patch repository at the tag, with every branch and tag, and this library next to it.
 - Runs one action per requirement of OSERA-SP-0.1.0 that can be checked on the source (table below). Each writes one record.
 - Runs the ControlPlane proposals (REL-004 early warnings), which warn and never fail the run.
+- Runs the observe checks, one action per requirement of the pack's `observe_standards` (table below). They report and never fail the run, and they are kept out of the rollup and out of `checks`, so the result and the gate's decision are the same with or without them.
 - Writes `result.json` with the [fitness page](https://standards.osera.finos.org/fitness/)'s fields: one entry per requirement saying what was expected, what was observed and the commands and outputs that showed it, one status per standard, the proposals underneath. Records are written outside the checkout, so nothing a producer commits can pre fill them.
 - Attests `result.json` with GitHub Attestations: an in-toto statement, predicate type `https://osera.finos.org/fitness-result/v1`, signed with the workflow's OIDC identity through Sigstore, stored by GitHub with the repository.
 - Attests the same result a second time under a subject the gate can compute from the tag alone: the SHA256 of the tagged commit id (subject name `git:<owner>/<repo>@<commit>`). The gate gets the commit for the tag from GitHub, hashes it, fetches the attestation by that digest, verifies signer, source and commit, and reads the result from the predicate. Nothing from the producer, no run to pick, no artifact retention.
@@ -101,11 +102,27 @@ ControlPlane proposals, not requirements on the site, put to the working group o
 | `proposal-rel-004-producer-approved` | CP-REL-004-02 | that producer is in the approved producer registry of the standards repository (`docs/_data/approved_producers.yml`, REL-004), checked out at `STANDARDS_REF` and recorded in the result as `registry_ref` |
 | `proposal-rel-004-accounts-in-entry` | CP-REL-004-03 | the account that pushed the tag and the accounts on the commits between the baseline tag and the release tag are all in that entry's `github_users` |
 
+Observe checks, the pack's `observe_standards` (fitness page: observe checks run during the gate, collect data for OSERA-SP-0.2.0 and do not block). Each records in `observe`, never in `checks`, and never fails the run. Where the standard defines no vocabulary, field or format yet, a check records `not-tested` and names what is missing; where a value is found but cannot be judged for that reason, `manual-evidence-required`. Where a check looks for a field the standard does not name, the action's comment says so.
+
+| Action | Requirement | What it checks |
+|---|---|---|
+| `fork-004-req-001` | FORK-004.REQ-001 | the release tag can be read from `https://github.com/<repository>.git` without credentials and names the checked out commit |
+| `fork-004-req-002` | FORK-004.REQ-002 | every licence and notice file at the baseline tag (LICENSE, LICENCE, NOTICE, COPYING, COPYRIGHT, any directory) is unchanged at the release tag; not applicable when the baseline has none |
+| `fork-004-req-003` | FORK-004.REQ-003 | the repository is in the expected organisation and is a GitHub fork; the parent is recorded, which upstream is the appropriate one is not defined yet |
+| `src-001-req-001` | SRC-001.REQ-001 | a patch basis per fix (`fixes[].basis`, or `patch.basis.type`); not tested until the working group defines the vocabulary |
+| `rel-006-req-001` | REL-006.REQ-001 | an authorization record (`backlog_item`, `sponsor_record`); not tested until the backlog and sponsorship model is settled |
+| `rel-008-req-001` | REL-008.REQ-001 | build security scan evidence (`build_security_scan_tool`, `scan_scope`, `scan_result`); not tested until the evidence format is defined |
+| `rel-008-req-002` | REL-008.REQ-002 | finding disposition (`unresolved_findings`, `finding_disposition`, `not_applicable_rationale`); not tested until the evidence format is defined |
+| `evd-001-req-001` | EVD-001.REQ-001 | `recipient_guidance` (or `patch.recipient_guidance`) valid against the standards repository's `docs/schemas/osera-recipient-guidance-0.1.0.schema.json` ([`lib/schema.jq`](lib/schema.jq)) |
+| `app-001-req-001` | APP-001.REQ-001 | not tested: it reads the feed and the recipient's estate, neither is in the patch repository |
+
+REL-007 (REL-007.REQ-001 and REL-007.REQ-002, build provenance and signed attestation) is checked by the gate at promotion, not here: it is about the digest of the artifact, which is built and uploaded after this run. The gate records it in the verdict's `observe` list.
+
 Actions take no inputs: the workflow sets the `OSERA_*` environment once and every action reads it. Each sources [`lib/record.sh`](lib/record.sh) and reads the same way: `check_is` names the requirement, `expect` states the rule with the actual values in it, `step` names what is being done, `ev` runs a command and keeps its command line (quoted so it can be pasted into a shell), exit code and output as evidence, `given` keeps a value GitHub set in the run context (owner, owner id, fork flag), `record` writes the status and what was observed. A check that dies before recording is written as `not-tested` with the step that failed and the evidence gathered so far. The artifact side checks (REL-002 bytecode level, REL-003 version pattern, REL-004 at the upload and at publication, REL-005 files and checksums, FEED-001) belong to the gate and are not here.
 
 ## The result
 
-`result.json` keeps the fitness page's fields. `checks` has one entry per requirement, `standards` one status per standard, `proposals` the ControlPlane entries in the same shape:
+`result.json` keeps the fitness page's fields. `checks` has one entry per requirement, `standards` one status per standard, `proposals` the ControlPlane entries and `observe` the observe checks, both in the same shape and both outside the rollup:
 
 ```json
 {
@@ -123,7 +140,8 @@ Actions take no inputs: the workflow sets the `OSERA_*` environment once and eve
     "observed": "no tag v1.16.0+patch.baseline (baseline tags present: none)",
     "evidence": [{"command": "git tag --list v1.16.0+patch.baseline *+patch.baseline", "exit": 0, "output": ""}]
   }],
-  "proposals": [{"standard": "REL-004", "requirement": "CP-REL-004-02", "check": null, "status": "warn", "expected": "...", "observed": "...", "evidence": []}]
+  "proposals": [{"standard": "REL-004", "requirement": "CP-REL-004-02", "check": null, "status": "warn", "expected": "...", "observed": "...", "evidence": []}],
+  "observe": [{"standard": "FORK-004", "standard_version": "0.0.1", "requirement": "FORK-004.REQ-001", "check": "FORK-004.CHECK-001", "status": "pass", "expected": "...", "observed": "...", "evidence": []}]
 }
 ```
 

@@ -1,0 +1,44 @@
+name: FORK-004.REQ-001 (observe)
+description: "FORK-004.REQ-001 (FORK-004 0.0.1): Patched-source repositories must be fully public and publicly fetchable without private credentials. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: FORK-004.REQ-001 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is FORK-004 0.0.1 FORK-004.REQ-001 FORK-004.CHECK-001
+        URL="https://github.com/${OSERA_REPOSITORY}.git"
+        expect "the release tag $OSERA_TAG can be fetched from $URL without credentials, and it names the commit this run checked out"
+
+        # 1. the commit the tag names in the checkout
+        REL_SHA="$(ev git rev-parse "refs/tags/${OSERA_TAG}^{commit}")"
+
+        # 2. the tag read from the public address with no credentials: no token in the environment,
+        #    no credential helper, no prompt. A private repository answers with an authentication error.
+        step "reading $OSERA_TAG from $URL without credentials"
+        RC=0
+        LISTED="$(ev env -u GH_TOKEN -u GITHUB_TOKEN GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "$URL" "refs/tags/${OSERA_TAG}" "refs/tags/${OSERA_TAG}^{}")" || RC=$?
+        if [ "$RC" -ne 0 ]; then
+          record warn "$URL could not be read without credentials (git ls-remote exit $RC)"
+          exit 0
+        fi
+
+        # 3. the tag must be there (a rehearsal pushes no tag, so the tag is missing in a rehearsal)
+        if [ -z "$LISTED" ]; then
+          record warn "$URL answers without credentials, but has no tag $OSERA_TAG"
+          exit 0
+        fi
+
+        # 4. the commit fetched must be the commit checked: the peeled line of an annotated tag, else the tag line
+        PEELED="$(awk -v t="refs/tags/${OSERA_TAG}^{}" '$2 == t {print $1}' <<<"$LISTED")"
+        PLAIN="$(awk -v t="refs/tags/${OSERA_TAG}" '$2 == t {print $1}' <<<"$LISTED")"
+        PUBLIC_SHA="${PEELED:-$PLAIN}"
+        if [ "$PUBLIC_SHA" = "$REL_SHA" ]; then
+          record pass "$URL serves $OSERA_TAG at $REL_SHA without credentials"
+        else
+          record warn "$URL serves $OSERA_TAG at $PUBLIC_SHA without credentials, this run checked out $REL_SHA"
+        fi

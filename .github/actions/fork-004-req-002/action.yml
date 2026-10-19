@@ -1,0 +1,51 @@
+name: FORK-004.REQ-002 (observe)
+description: "FORK-004.REQ-002 (FORK-004 0.0.1): Patched-source repositories must preserve applicable upstream open-source license files and notices and release patched source under the same applicable license terms as the original source line. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: FORK-004.REQ-002 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is FORK-004 0.0.1 FORK-004.REQ-002 FORK-004.CHECK-002
+        expect "every licence and notice file of the upstream source at $BASE is still at $OSERA_TAG, at the same path, with the same content"
+
+        # Our proposal, the standard names no file pattern: a licence or notice file is one whose name, in any case and
+        # in any directory, is LICENSE, LICENCE, NOTICE, COPYING or COPYRIGHT, optionally followed by a dash or underscore
+        # part (LICENSE-APACHE, LICENSE-2.0) and by .txt, .md, .adoc, .rst or .html. License.java is not one.
+        PATTERN='(^|/)(licen[cs]e|notice|copying|copyright)([-_][a-z0-9]+(\.[0-9]+)*)?(\.(txt|md|adoc|rst|html))?$'
+
+        # 1. without the baseline tag there is no upstream source to compare with: the check stops and is recorded not-tested
+        step "resolving the baseline tag $BASE"
+        ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
+
+        # 2. the licence and notice files of the upstream source, at the baseline. git ls-tree takes no case insensitive
+        #    pattern, git diff does: every file of the baseline, as a difference from the empty tree, filtered by name
+        step "listing the licence and notice files at $BASE"
+        EMPTY_TREE="$(git hash-object -t tree /dev/null)"
+        CANDIDATES="$(ev git diff --name-only "$EMPTY_TREE" "$BASE" -- ':(glob,icase)**/licen[cs]e*' ':(glob,icase)**/notice*' ':(glob,icase)**/copying*' ':(glob,icase)**/copyright*')"
+        UPSTREAM="$(grep -iE "$PATTERN" <<<"$CANDIDATES" || true)"
+        if [ -z "$UPSTREAM" ]; then
+          record not-applicable "no licence or notice file at $BASE, nothing to preserve"
+          exit 0
+        fi
+
+        # 3. the same files at the release tag: deleted or changed ones are listed by git
+        FILES=()
+        while IFS= read -r P; do
+          FILES+=("$P")
+        done <<<"$UPSTREAM"
+        step "comparing the licence and notice files between $BASE and $OSERA_TAG"
+        CHANGED="$(ev git diff --name-status "$BASE" "$OSERA_TAG" -- "${FILES[@]}")"
+
+        # 4. the verdict: every file unchanged, or the ones that were deleted (D) or modified (M)
+        N="${#FILES[@]}"
+        LIST="$(paste -sd, - <<<"$UPSTREAM")"
+        if [ -z "$CHANGED" ]; then
+          record pass "$N licence and notice file(s) at $BASE, all unchanged at $OSERA_TAG: $LIST. Whether every patched source file stays under those terms is not checked here"
+        else
+          record warn "licence or notice file(s) of $BASE deleted (D) or changed (M) at $OSERA_TAG: $(tr "\t" " " <<<"$CHANGED" | paste -sd, -); upstream files: $LIST"
+        fi

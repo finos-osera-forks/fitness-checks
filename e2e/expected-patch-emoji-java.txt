@@ -9,3 +9,12 @@ SRC-003.REQ-001 not-applicable
 CP-REL-004-01 pass
 CP-REL-004-02 warn
 CP-REL-004-03 warn
+APP-001.REQ-001 not-tested
+EVD-001.REQ-001 not-tested
+FORK-004.REQ-001 pass
+FORK-004.REQ-002 pass
+FORK-004.REQ-003 warn
+REL-006.REQ-001 not-tested
+REL-008.REQ-001 not-tested
+REL-008.REQ-002 not-tested
+SRC-001.REQ-001 not-tested

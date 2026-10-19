@@ -1,0 +1,66 @@
+name: EVD-001.REQ-001 (observe)
+description: "EVD-001.REQ-001 (EVD-001 0.0.1): Patch providers should publish versioned recipient guidance describing what changed and what surface area should be tested. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: EVD-001.REQ-001 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is EVD-001 0.0.1 EVD-001.REQ-001 EVD-001.CHECK-001
+        F=.osera/patch-evidence.yaml
+        SCHEMA=.osera-standards/docs/schemas/osera-recipient-guidance-0.1.0.schema.json
+        expect "the recipient guidance of $OSERA_TAG (what changed, what to test) is valid against the standards repository's schema $SCHEMA"
+
+        # Our proposal, the standard does not decide where the guidance is published (feeds, release notes, repository
+        # files or evidence bundles): it is looked for in $F, at recipient_guidance (the standard's suggested schema)
+        # or at patch.recipient_guidance (the standards repository's evidence example).
+        WHY="the standard has not decided where recipient guidance is published (EVD-001, maturity note)"
+
+        # 1. the schema, from the standards repository at the pack ref
+        step "reading the schema $SCHEMA"
+        if [ ! -f "$SCHEMA" ]; then
+          record not-tested "the schema $SCHEMA is not in the standards repository checked out at the pack ref"
+          exit 0
+        fi
+
+        # 2. the evidence file must be in the repository at the tag
+        step "reading $F"
+        if [ ! -f "$F" ]; then
+          record not-tested "$F is not in the repository at $OSERA_TAG; $WHY"
+          exit 0
+        fi
+
+        # 3. the guidance, at either place, as JSON
+        GUIDANCE="$(ev yq -o=json -I=0 '.recipient_guidance // .patch.recipient_guidance // null' "$F")"
+        if [ "$GUIDANCE" = "null" ]; then
+          record not-tested "$WHY; $F has no recipient_guidance and no patch.recipient_guidance"
+          exit 0
+        fi
+
+        # 4. the guidance against the schema: one line per problem
+        step "checking the guidance against $SCHEMA"
+        RC=0
+        PROBLEMS="$(ev jq -r --slurpfile schema "$SCHEMA" --arg name recipient_guidance -f "$GITHUB_ACTION_PATH/../../../lib/schema.jq" <<<"$GUIDANCE")" || RC=$?
+        if [ "$RC" -ne 0 ]; then
+          record not-tested "the guidance could not be checked against $SCHEMA (jq exit $RC)"
+          exit 0
+        fi
+
+        # 5. a keyword of the schema this check cannot evaluate: the guidance is never called valid
+        UNHANDLED="$(grep '^unhandled keyword: ' <<<"$PROBLEMS" || true)"
+        PROBLEMS="$(grep -v '^unhandled keyword: ' <<<"$PROBLEMS" || true)"
+        if [ -n "$UNHANDLED" ]; then
+          record warn "$SCHEMA uses what this check does not handle, the guidance is not judged valid: $(paste -sd';' - <<<"$UNHANDLED"); problems found: $(paste -sd';' - <<<"${PROBLEMS:-none}")"
+          exit 0
+        fi
+
+        # 6. the verdict on the keywords it checks
+        if [ -z "$PROBLEMS" ]; then
+          record pass "recipient guidance valid against $SCHEMA: $GUIDANCE"
+        else
+          record warn "recipient guidance not valid against $SCHEMA: $(paste -sd';' - <<<"$PROBLEMS")"
+        fi

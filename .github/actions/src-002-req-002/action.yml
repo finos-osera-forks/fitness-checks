@@ -11,16 +11,17 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-002 0.1.0 SRC-002.REQ-002 SRC-002.CHECK-002
-        expect "every commit between $BASE and $OSERA_TAG whose message names an upstream commit (cherry picked from, backport of, upstream commit) carries a Co-authored-by trailer naming the upstream author"
+        expect "every commit between $BASE and $OSERA_TAG whose message names an upstream commit (cherry picked from, backport of, upstream commit, an Upstream-Commit trailer) carries a Co-authored-by trailer naming the upstream author"
 
         # 1. without the baseline tag there is no range to look at: the check stops and is recorded not-tested
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
-        # 2. the commits in the range, and those whose message names an upstream commit
+        # 2. the commits in the range, and those whose message names an upstream commit; a producer may name it in a
+        #    trailer, Upstream-Commit: <id> (Moderne's fix commits in patch-jackson-databind, read 16 Oct 2026)
         step "reading the commits between $BASE and $OSERA_TAG"
         TOTAL="$(ev git rev-list --count "${BASE}..${OSERA_TAG}")"
-        CARRYING="$(ev git log --format=%H "${BASE}..${OSERA_TAG}" -i --extended-regexp --grep='(cherry picked from commit|backport of|upstream commit|upstream:) *[0-9a-f]{7,40}')"
+        CARRYING="$(ev git log --format=%H "${BASE}..${OSERA_TAG}" -i --extended-regexp --grep='(cherry picked from commit|backport of|upstream commit|upstream-commit:|upstream:) *[0-9a-f]{7,40}')"
         if [ -z "$CARRYING" ]; then
           record not-applicable "$TOTAL commit(s) between $BASE and $OSERA_TAG, none names an upstream commit"
           exit 0
