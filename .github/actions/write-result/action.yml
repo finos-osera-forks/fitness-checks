@@ -1,5 +1,5 @@
 name: write the fitness result
-description: "Collect the per requirement records into result.json: the fitness page's fields, one entry per requirement with expected, observed and the evidence, one status per standard, the ControlPlane proposals underneath"
+description: "Collect the per requirement records into result.json: the fitness page's fields, one entry per requirement with expected, observed and the evidence, one status per standard, the ControlPlane proposals and the observe checks underneath, outside the rollup"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (OSERA_TAG, OSERA_REPOSITORY, OSERA_PACK, OSERA_RESULTS_DIR, OSERA_LIBRARY, OSERA_APPROVED_PRODUCERS, OSERA_ACTOR). No inputs.
 outputs:
@@ -36,8 +36,12 @@ runs:
         fi
         TAG_ACTOR="${OSERA_ACTOR:-}"
 
-        # 2. exactly one record per expected requirement: a missing one is written as not-tested, an unexpected one stops the run
-        EXPECTED="FORK-001.REQ-001 FORK-001.REQ-002 FORK-002.REQ-001 FORK-003.REQ-001 SRC-002.REQ-001 SRC-002.REQ-002 SRC-003.REQ-001 REL-001.REQ-001 CP-REL-004-01 CP-REL-004-02 CP-REL-004-03"
+        # 2. exactly one record per expected requirement: a missing one is written as not-tested, an unexpected one stops the run.
+        #    OBSERVE are the requirements of the pack's observe_standards: recorded apart from the rollup, so they never
+        #    change the result nor reach the checks the gate reads. REL-007 is not listed: the gate checks it at promotion.
+        OBSERVE="FORK-004.REQ-001 FORK-004.REQ-002 FORK-004.REQ-003 SRC-001.REQ-001 REL-006.REQ-001 REL-008.REQ-001 REL-008.REQ-002 EVD-001.REQ-001 APP-001.REQ-001"
+        EXPECTED="FORK-001.REQ-001 FORK-001.REQ-002 FORK-002.REQ-001 FORK-003.REQ-001 SRC-002.REQ-001 SRC-002.REQ-002 SRC-003.REQ-001 REL-001.REQ-001 CP-REL-004-01 CP-REL-004-02 CP-REL-004-03 $OBSERVE"
+        OBSERVE_JSON="$(tr ' ' '\n' <<<"$OBSERVE" | jq -R . | jq -cs .)"
         cd "$OSERA_RESULTS_DIR"
         for R in $EXPECTED; do
           [ -f "$R.json" ] && continue
@@ -67,7 +71,8 @@ runs:
           PACK_CHECKSUM=""
         fi
 
-        # 4. the result: the page's fields, one status per standard, one entry per requirement, the proposals
+        # 4. the result: the page's fields, one status per standard, one entry per requirement, the proposals,
+        #    the observe checks
         jq -s -f "$LIB/result.jq" \
            --arg pack "$OSERA_PACK" --arg repo "$OSERA_REPOSITORY" --arg release "$OSERA_TAG" \
            --arg commit "$COMMIT" --arg producer "$PRODUCER" --arg library "$OSERA_LIBRARY" --arg registry_ref "$OSERA_REGISTRY_REF" \
@@ -75,6 +80,7 @@ runs:
            --arg evidence_sha "$EVIDENCE_SHA" \
            --arg rehearsal "${OSERA_REHEARSAL:-false}" \
            --argjson registry_entry "$REGISTRY_ENTRY" --arg tag_actor "$TAG_ACTOR" \
+           --argjson observe "$OBSERVE_JSON" \
            ./*.json > result.json
 
         echo "result=$(jq -r .result result.json)" >> "$GITHUB_OUTPUT"

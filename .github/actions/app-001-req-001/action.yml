@@ -1,0 +1,19 @@
+name: APP-001.REQ-001 (observe)
+description: "APP-001.REQ-001 (APP-001 0.0.1): Patch feeds and metadata should support estate-wide discovery and application across dependency estates. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: APP-001.REQ-001 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is APP-001 0.0.1 APP-001.REQ-001 APP-001.CHECK-001
+        expect "the feed entries and metadata for the artifacts released at $OSERA_TAG let a recipient find every application and dependency path the patch would change"
+
+        # 1. the check reads feed metadata (its type in the standard is feed-metadata): the feed entries and the
+        #    dependency coordinates. The exchange publishes the feed after promotion, and the recipient's estate is the
+        #    bank's; neither is in the patch repository at the tag.
+        record not-tested "APP-001 reads the feed entries and the dependency coordinates of a recipient's estate; the feed is published by the exchange after promotion and the estate is the recipient's, neither is in the patch repository at $OSERA_TAG"

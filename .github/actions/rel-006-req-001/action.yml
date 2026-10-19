@@ -1,0 +1,46 @@
+name: REL-006.REQ-001 (observe)
+description: "REL-006.REQ-001 (REL-006 0.0.1): Patch releases should identify the backlog item, public request, sponsor record, or equivalent authorization record for the patched coordinate and line. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: REL-006.REQ-001 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is REL-006 0.0.1 REL-006.REQ-001 REL-006.CHECK-001
+        F=.osera/patch-evidence.yaml
+        expect "$F identifies the backlog item, public request, sponsor record or equivalent authorization record for the patched artifacts on line $LINE"
+
+        # Our proposal, the standard defines no field: the record is looked for under the names of the check's evidence
+        # in the standard (backlog_item, sponsor_record), at any depth of the file. The model is not settled, so a value
+        # is never judged: found, the record asks for a person to review it; not found, the check is not tested.
+        WHY="the working group has not settled the backlog and private sponsorship model nor where a release records its authorization (REL-006, observe mode rationale)"
+
+        # 1. the evidence file must be in the repository at the tag
+        step "reading $F"
+        if [ ! -f "$F" ]; then
+          record not-tested "$F is not in the repository at $OSERA_TAG; $WHY"
+          exit 0
+        fi
+
+        # 2. the patched coordinates and the line, the context the record must name
+        ARTIFACTS="$(ev yq -r '[.fixes // [] | .[] | .artifacts // [] | .[]] | unique | join(",")' "$F")"
+
+        # 3. every key used in the file, then the two names looked for
+        KEYS="$(ev yq -r '[.. | select(tag == "!!map") | keys | .[]] | unique | .[]' "$F")"
+        FOUND=""
+        for K in backlog_item sponsor_record; do
+          if grep -qxF "$K" <<<"$KEYS"; then
+            FOUND="$FOUND $K=$(K="$K" yq -o=json -I=0 '[.. | select(tag == "!!map" and has(env(K))) | .[env(K)]]' "$F")"
+          fi
+        done
+
+        # 4. the verdict
+        if [ -z "$FOUND" ]; then
+          record not-tested "$WHY; $F has neither backlog_item nor sponsor_record; patched artifacts ${ARTIFACTS:-none listed} on line $LINE"
+        else
+          record manual-evidence-required "authorization record(s) found:$FOUND; patched artifacts ${ARTIFACTS:-none listed} on line $LINE; $WHY, so the values are shown, not judged"
+        fi

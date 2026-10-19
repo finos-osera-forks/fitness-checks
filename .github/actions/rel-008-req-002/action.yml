@@ -1,0 +1,44 @@
+name: REL-008.REQ-002 (observe)
+description: "REL-008.REQ-002 (REL-008 0.0.1): Build-security evidence should identify unresolved high-risk findings or explain why the selected tooling is not applicable to the patched project. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: REL-008.REQ-002 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is REL-008 0.0.1 REL-008.REQ-002 REL-008.CHECK-002
+        F=.osera/patch-evidence.yaml
+        expect "$F lists the unresolved high risk findings of the build security scan of $OSERA_TAG and their disposition, or explains why no scanner applies"
+
+        # Our proposal, the standard defines no field: the findings are looked for under the names of the check's evidence
+        # in the standard (unresolved_findings, finding_disposition, not_applicable_rationale), at any depth of the file.
+        # The evidence format is not defined, so a value is never judged: found, the record asks for a person to review
+        # it; not found, the check is not tested.
+        WHY="the working group has not defined the scanning expectations nor the evidence format (REL-008, observe mode rationale)"
+
+        # 1. the evidence file must be in the repository at the tag
+        step "reading $F"
+        if [ ! -f "$F" ]; then
+          record not-tested "$F is not in the repository at $OSERA_TAG; $WHY"
+          exit 0
+        fi
+
+        # 2. every key used in the file, then the three names looked for
+        KEYS="$(ev yq -r '[.. | select(tag == "!!map") | keys | .[]] | unique | .[]' "$F")"
+        FOUND=""
+        for K in unresolved_findings finding_disposition not_applicable_rationale; do
+          if grep -qxF "$K" <<<"$KEYS"; then
+            FOUND="$FOUND $K=$(K="$K" yq -o=json -I=0 '[.. | select(tag == "!!map" and has(env(K))) | .[env(K)]]' "$F")"
+          fi
+        done
+
+        # 3. the verdict
+        if [ -z "$FOUND" ]; then
+          record not-tested "$WHY; $F has none of unresolved_findings, finding_disposition, not_applicable_rationale"
+        else
+          record manual-evidence-required "finding evidence found:$FOUND; $WHY, so the values are shown, not judged"
+        fi

@@ -1,0 +1,51 @@
+name: SRC-001.REQ-001 (observe)
+description: "SRC-001.REQ-001 (SRC-001 0.0.1): Patch providers should classify whether each CVE or fix item in a patch release is based on an upstream fix, an adapted upstream fix, or a provider-developed fix, using a vocabulary still to be defined by the working group. Observe only: kept out of the result, never fails the run"
+author: ControlPlane for the FINOS OSERA Exchange
+# Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
+runs:
+  using: composite
+  steps:
+    - name: SRC-001.REQ-001 (observe)
+      shell: bash
+      run: |
+        set -euo pipefail
+        source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
+        check_is SRC-001 0.0.1 SRC-001.REQ-001 SRC-001.CHECK-001
+        F=.osera/patch-evidence.yaml
+        expect "every fix in $F says whether it is an upstream fix, an adapted upstream fix or a provider developed fix, in the vocabulary the working group will define"
+
+        # Our proposal, the standard defines no field: the basis of a fix is read from fixes[].basis (a word, or a map
+        # with a type, as in the standards repository's evidence example), and the basis of the whole release from
+        # patch.basis.type (the field of that example). The vocabulary is not defined, so a value is never judged:
+        # found, the record asks for a person to review it; not found, the check is not tested.
+        WHY="the working group has not defined the patch basis vocabulary nor where it is recorded (SRC-001, unresolved issue)"
+
+        # 1. the evidence file must be in the repository at the tag
+        step "reading $F"
+        if [ ! -f "$F" ]; then
+          record not-tested "$F is not in the repository at $OSERA_TAG, there is no list of fixes to read; $WHY"
+          exit 0
+        fi
+
+        # 2. one line per fix: the CVE, the upstream link and the basis, placeholders when missing
+        FIXES="$(ev yq -r '.fixes // [] | .[] | (.cve // "no-cve") + " " + (.upstream // "no-upstream") + " basis=" + ((.basis.type // .basis) // "none")' "$F")"
+        RELEASE_BASIS="$(ev yq -r '.patch.basis.type // "none"' "$F")"
+        if [ -z "$FIXES" ]; then
+          record not-tested "$F has no fixes list; $WHY"
+          exit 0
+        fi
+
+        # 3. the fixes that carry a basis
+        N="$(wc -l <<<"$FIXES" | tr -d ' ')"
+        WITH="$(grep -v ' basis=none$' <<<"$FIXES" || true)"
+        if [ -z "$WITH" ] && [ "$RELEASE_BASIS" = "none" ]; then
+          record not-tested "$WHY; $F carries no basis (fixes[].basis and patch.basis.type are absent) for its $N fix(es): $(paste -sd';' - <<<"$FIXES")"
+          exit 0
+        fi
+
+        # 4. a basis is there: shown for a person to review, as there is no vocabulary to check it against
+        K=0
+        if [ -n "$WITH" ]; then
+          K="$(wc -l <<<"$WITH" | tr -d ' ')"
+        fi
+        record manual-evidence-required "basis given for $K of $N fix(es), release basis $RELEASE_BASIS; $WHY, so the values are shown, not judged: $(paste -sd';' - <<<"$FIXES")"

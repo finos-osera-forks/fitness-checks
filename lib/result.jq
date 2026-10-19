@@ -4,7 +4,8 @@
 #
 # Builds result.json from the per requirement records (jq -s: the input is the array of all records).
 # Arguments: $pack $pack_checksum $repo $release $commit $producer $library $registry_ref $evidence_sha $rehearsal
-#            $registry_entry (JSON: the producer's staging_account and github_users copied from the registry, or null) $tag_actor.
+#            $registry_entry (JSON: the producer's staging_account and github_users copied from the registry, or null) $tag_actor
+#            $observe (JSON: the requirement ids of the pack's observe_standards).
 
 # The one rollup, used per standard and at the top: any fail is a fail, then warn, then not-tested, then pass;
 # not-applicable only when everything underneath is.
@@ -16,9 +17,11 @@ def rollup:
     elif any($s[]; . == "pass") then "pass"
     else "not-applicable" end;
 
-# the requirements of the pack, and the ControlPlane proposals (CP-*), kept apart
-(map(select(.requirement | startswith("CP-") | not))) as $checks
+# the requirements of the pack, the ControlPlane proposals (CP-*) and the observe checks, kept apart: only $checks
+# counts in the rollup, and the gate reads only checks, so a proposal or an observe check never changes the result
+(map(select((.requirement | startswith("CP-") | not) and (.requirement | IN($observe[]) | not)))) as $checks
 | (map(select(.requirement | startswith("CP-")))) as $proposals
+| (map(select(.requirement | IN($observe[])))) as $observe_checks
 
 # one status per standard, the fitness page's view
 | ($checks | group_by(.standard) | map({standard: .[0].standard, standard_version: .[0].standard_version, status: rollup})) as $standards
@@ -47,5 +50,7 @@ def rollup:
     signature: (if $rehearsal == "true" then "rehearsal, not signed: the gate never accepts this result" else "see the GitHub artifact attestation on this file" end),
     standards: $standards,
     checks: $checks,
-    proposals: $proposals
+    proposals: $proposals,
+    # the pack's observe_standards: run and reported, never in the rollup (the fitness page: observe checks do not block)
+    observe: $observe_checks
   }
