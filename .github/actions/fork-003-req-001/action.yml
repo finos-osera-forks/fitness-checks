@@ -11,7 +11,8 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-003 0.1.0 FORK-003.REQ-001 FORK-003.CHECK-001
-        expect "tag $BASE exists and points to a commit strictly before $OSERA_TAG on the same history"
+        F=.osera/patch-evidence.yaml
+        expect "tag $BASE exists and points to a commit strictly before $OSERA_TAG on the same history; the baseline line of $F, when there, names $BASE"
 
         # 1. the baseline tag must exist
         step "listing the baseline tags"
@@ -24,12 +25,25 @@ runs:
         BASE_SHA="$(ev git rev-parse "refs/tags/${BASE}^{commit}")"
         REL_SHA="$(ev git rev-parse "refs/tags/${OSERA_TAG}^{commit}")"
 
-        # 3. the baseline must come before the release, on the same history
+        # 3. the evidence file's baseline line, when it has one, names the same tag: a SHOULD of FORK-003, so a
+        #    warning, never a failure; a file or a line that is not there is not flagged
+        STATUS=pass
+        NOTE=""
+        if [ -f "$F" ]; then
+          step "reading the baseline line of $F"
+          LINE="$(ev yq -r '.baseline // ""' "$F")"
+          if [ -n "$LINE" ] && [ "$LINE" != "$BASE" ]; then
+            STATUS=warn
+            NOTE="; $F says baseline: $LINE, not $BASE"
+          fi
+        fi
+
+        # 4. the baseline must come before the release, on the same history
         if [ "$BASE_SHA" = "$REL_SHA" ]; then
           record fail "$BASE and $OSERA_TAG point to the same commit $BASE_SHA, the baseline must come before the patch"
         elif ev git merge-base --is-ancestor "$BASE_SHA" "$REL_SHA" >/dev/null; then
           N="$(ev git rev-list --count "$BASE_SHA..$REL_SHA")"
-          record pass "$BASE is $BASE_SHA, $N commit(s) before $OSERA_TAG ($REL_SHA)"
+          record "$STATUS" "$BASE is $BASE_SHA, $N commit(s) before $OSERA_TAG ($REL_SHA)$NOTE"
         else
           record fail "$BASE ($BASE_SHA) is not an ancestor of $OSERA_TAG ($REL_SHA)"
         fi

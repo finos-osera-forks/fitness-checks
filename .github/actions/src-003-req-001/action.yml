@@ -11,18 +11,31 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-003 0.1.0 SRC-003.REQ-001 SRC-003.CHECK-001
-        expect "every Java source or test file added between $BASE and $OSERA_TAG carries the licence header of the nearest existing file of the same kind in the same module (years, whitespace and asterisks ignored)"
+        PLUMBING='^(\.osera/|\.github/workflows/osera-fitness\.ya?ml$)'
+        expect "every source or test file added between $BASE and $OSERA_TAG, of any type, carries the licence header of the nearest existing file of the same type and kind in the same module (years, whitespace and comment marks ignored); the OSERA files under .osera/ and the fitness workflow are not the patched source"
 
-        # the leading block comment of a file at a revision, years replaced by YEAR, whitespace and asterisks removed;
-        # empty when the file does not start with one. awk reads the whole stream, so git never gets a broken pipe
+        # the leading comment of a file at a revision, in the four styles a licence header takes (Francesco, 19 Oct
+        # 2026): a /* */ block, an XML <!-- --> block, lines starting with //, lines starting with #. Blank lines, an
+        # <?xml ?> declaration and a #! line before it are skipped. Years replaced by YEAR, whitespace, asterisks and
+        # the comment marks removed; empty when the file does not start with a comment. awk reads the whole stream, so
+        # git never gets a broken pipe
         header() {
           git show "$1:$2" \
-            | awk 'BEGIN {c=0; d=0}
-                   d == 1 {next}
-                   c == 0 && /^[[:space:]]*$/ {next}
-                   c == 0 && $0 !~ /^[[:space:]]*\/\*/ {d=1; next}
-                   {c=1; print}
-                   /\*\// {d=1}' \
+            | awk 'BEGIN {style=""; done=0}
+                   done == 1 {next}
+                   style == "" && /^[[:space:]]*$/ {next}
+                   style == "" && (/^<\?xml/ || /^#!/) {next}
+                   style == "" && /^[[:space:]]*\/\*/ {style="block"}
+                   style == "" && /^[[:space:]]*<!--/ {style="xml"}
+                   style == "" && /^[[:space:]]*\/\// {style="slash"}
+                   style == "" && /^[[:space:]]*#/ {style="hash"}
+                   style == "" {done=1; next}
+                   style == "block" {print; if ($0 ~ /\*\//) done=1; next}
+                   style == "xml" {print; if ($0 ~ /-->/) done=1; next}
+                   style == "slash" && /^[[:space:]]*\/\// {print; next}
+                   style == "hash" && /^[[:space:]]*#/ {print; next}
+                   {done=1}' \
+            | sed -E 's/^[[:space:]]*(\/\/|#)//; s/<!--|-->//g' \
             | sed -E 's/(19|20)[0-9]{2}([[:space:]]*[-,][[:space:]]*(19|20)[0-9]{2})*/YEAR/g' \
             | tr -d " \t\r\n*"
         }
@@ -55,11 +68,12 @@ runs:
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
-        # 2. the Java family files added since the baseline
+        # 2. the files added since the baseline, of any type, the OSERA plumbing left out
         step "listing the files added since $BASE"
-        ADDED="$(ev git diff --name-only --diff-filter=A "$BASE" "$OSERA_TAG" -- '*.java' '*.kt' '*.groovy' '*.scala')"
+        ALL="$(ev git diff --name-only --diff-filter=A "$BASE" "$OSERA_TAG")"
+        ADDED="$(grep -vE "$PLUMBING" <<<"$ALL" || true)"
         if [ -z "$ADDED" ]; then
-          record not-applicable "no Java source or test file added between $BASE and $OSERA_TAG"
+          record not-applicable "no source or test file added between $BASE and $OSERA_TAG, beyond the OSERA files"
           exit 0
         fi
 

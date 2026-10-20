@@ -15,7 +15,9 @@ runs:
         expect "$F lists the unresolved high risk findings of the build security scan of $OSERA_TAG and their disposition, or explains why no scanner applies"
 
         # Our proposal, the standard defines no field: the findings are looked for under the names of the check's evidence
-        # in the standard (unresolved_findings, finding_disposition, not_applicable_rationale), at any depth of the file.
+        # in the standard (unresolved_findings, finding_disposition, not_applicable_rationale), at any depth of the file
+        # outside the fixes list: a fix's not_applicable_rationale is an SRC-002 note on that fix, not a scan disposition
+        # (Francesco, 19 Oct 2026).
         # The evidence format is not defined, so a value is never judged: found, the record asks for a person to review
         # it; not found, the check is not tested.
         WHY="the working group has not defined the scanning expectations nor the evidence format (REL-008, observe mode rationale)"
@@ -27,12 +29,12 @@ runs:
           exit 0
         fi
 
-        # 2. every key used in the file, then the three names looked for
-        KEYS="$(ev yq -r '[.. | select(tag == "!!map") | keys | .[]] | unique | .[]' "$F")"
+        # 2. every key used in the file outside the fixes list, then the three names looked for
+        KEYS="$(ev yq -r 'del(.fixes) | [.. | select(tag == "!!map") | keys | .[]] | unique | .[]' "$F")"
         FOUND=""
         for K in unresolved_findings finding_disposition not_applicable_rationale; do
           if grep -qxF "$K" <<<"$KEYS"; then
-            FOUND="$FOUND $K=$(K="$K" yq -o=json -I=0 '[.. | select(tag == "!!map" and has(env(K))) | .[env(K)]]' "$F")"
+            FOUND="$FOUND $K=$(K="$K" yq -o=json -I=0 'del(.fixes) | [.. | select(tag == "!!map" and has(env(K))) | .[env(K)]]' "$F")"
           fi
         done
 
