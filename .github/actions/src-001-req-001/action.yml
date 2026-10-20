@@ -27,8 +27,9 @@ runs:
           exit 0
         fi
 
-        # 2. one line per fix: the CVE, the upstream link and the basis, placeholders when missing
-        FIXES="$(ev yq -r '.fixes // [] | .[] | (.cve // "no-cve") + " " + (.upstream // "no-upstream") + " basis=" + ((.basis.type // .basis) // "none")' "$F")"
+        # 2. one line per fix: the CVE, the upstream link and the basis, placeholders when missing. The upstream link is
+        #    upstream_fix_url, else advisory_url (the SRC-002 fields), else the earlier upstream field
+        FIXES="$(ev yq -r '.fixes // [] | .[] | (.cve // "no-cve") + " " + (.upstream_fix_url // .advisory_url // .upstream // "no-upstream") + " basis=" + ((.basis.type // .basis) // "none")' "$F")"
         RELEASE_BASIS="$(ev yq -r '.patch.basis.type // "none"' "$F")"
         if [ -z "$FIXES" ]; then
           record not-tested "$F has no fixes list; $WHY"

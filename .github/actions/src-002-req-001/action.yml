@@ -12,7 +12,13 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-002 0.1.0 SRC-002.REQ-001 SRC-002.CHECK-001
         F=.osera/patch-evidence.yaml
-        expect "every entry under fixes in $F names a CVE and links the upstream fix (commit, pull request, advisory or release note) with an https URL"
+        expect "every entry under fixes in $F links the upstream fix with an https URL: upstream_fix_url or advisory_url, and patch_commit_url a GitHub commit or compare URL unless not_applicable_rationale says why there is none (files with those fields); upstream otherwise; a CVE named in each, a warning when not"
+
+        # The standard names upstream_fix_url and patch_commit_url as the check's evidence; advisory_url is ours, for an
+        # upstream advisory when no upstream commit is public (Francesco, 19 Oct 2026: all three, one link filled). A
+        # file that uses none of the three keeps the earlier rule, the https link under upstream. The links are checked
+        # by their shape, not opened: the check is that a link is present (SRC-002.CHECK-001, partially automated). A
+        # fix without a CVE is a warning: the standard lists the vulnerability identifier as a SHOULD of the evidence.
 
         # 1. the evidence file must be in the repository at the tag
         step "reading $F"
@@ -20,17 +26,56 @@ runs:
           record fail "$F is not in the repository at $OSERA_TAG"
         fi
 
-        # 2. one line per fix: the CVE and the upstream link, placeholders when missing
-        FIXES="$(ev yq -r '.fixes // [] | .[] | (.cve // "no-cve") + " " + (.upstream // "no-upstream")' "$F")"
+        # 2. one line per fix, tab separated, - for a value that is missing or empty: the CVE, upstream_fix_url,
+        #    advisory_url, patch_commit_url, not_applicable_rationale, upstream
+        FIXES="$(ev yq -r '.fixes // [] | .[] | [(.cve // "-"), (.upstream_fix_url // "-"), (.advisory_url // "-"), (.patch_commit_url // "-"), (.not_applicable_rationale // "-"), (.upstream // "-")] | map(select(. != "") // "-") | @tsv' "$F")"
         if [ -z "$FIXES" ]; then
           record fail "$F has no fixes list"
         fi
-
-        # 3. every fix needs a CVE and an https link
-        BAD="$(awk '$1 == "no-cve" || $2 !~ /^https:\/\// {print}' <<<"$FIXES")"
         N="$(wc -l <<<"$FIXES" | tr -d ' ')"
-        if [ -z "$BAD" ]; then
-          record pass "$N fix(es), each with a CVE and an https link to the upstream fix: $(paste -sd';' - <<<"$FIXES")"
+
+        # 3. which rule: the new fields anywhere in the file, or the earlier upstream field
+        NEW="$(awk -F'\t' '$2 != "-" || $3 != "-" || $4 != "-" {print "yes"; exit}' <<<"$FIXES")"
+
+        # 4. each fix against its rule; a missing CVE is listed apart, as a warning
+        if [ "$NEW" = yes ]; then
+          BAD="$(awk -F'\t' '
+            {
+              why = ""
+              if ($2 == "-" && $3 == "-") {
+                why = why " no upstream_fix_url nor advisory_url"
+              }
+              if ($2 != "-" && $2 !~ /^https:\/\//) {
+                why = why " upstream_fix_url not https"
+              }
+              if ($3 != "-" && $3 !~ /^https:\/\//) {
+                why = why " advisory_url not https"
+              }
+              if ($4 == "-" && $5 == "-") {
+                why = why " no patch_commit_url and no not_applicable_rationale"
+              }
+              if ($4 != "-" && $4 !~ /^https:\/\/github\.com\/[^\/]+\/[^\/]+\/(commit\/[0-9a-f]+|compare\/[0-9a-f]+\^?\.\.\.[0-9a-f]+)$/) {
+                why = why " patch_commit_url not a GitHub commit or compare URL"
+              }
+              if (why != "") {
+                print $1 ":" why
+              }
+            }' <<<"$FIXES")"
+          RATIONALE="$(awk -F'\t' '$4 == "-" && $5 != "-" {n++} END {print n + 0}' <<<"$FIXES")"
+          SEEN="upstream_fix_url, advisory_url and patch_commit_url read; $RATIONALE fix(es) without a patch commit, each with a not_applicable_rationale"
+          SHOWN="$(awk -F'\t' '{print $1 " " ($2 != "-" ? $2 : $3) " " ($4 != "-" ? $4 : "no patch commit: " $5)}' <<<"$FIXES")"
         else
-          record fail "fix(es) without a CVE or without an https link: $(paste -sd';' - <<<"$BAD")"
+          BAD="$(awk -F'\t' '$6 !~ /^https:\/\// {print $1 ": no https link under upstream"}' <<<"$FIXES")"
+          SEEN="the earlier rule, the link under upstream (the file uses none of upstream_fix_url, advisory_url, patch_commit_url)"
+          SHOWN="$(awk -F'\t' '{print $1 " " $6}' <<<"$FIXES")"
+        fi
+        NOCVE="$(awk -F'\t' '$1 == "-"' <<<"$FIXES" | wc -l | tr -d ' ')"
+
+        # 5. the verdict: a link missing fails, a CVE missing warns
+        if [ -n "$BAD" ]; then
+          record fail "$SEEN; fix(es) without the links: $(paste -sd';' - <<<"$BAD")"
+        elif [ "$NOCVE" -gt 0 ]; then
+          record warn "$N fix(es) with their links ($SEEN); $NOCVE fix(es) name no CVE, which the evidence should: $(paste -sd';' - <<<"$SHOWN")"
+        else
+          record pass "$N fix(es), each with a CVE and its links ($SEEN): $(paste -sd';' - <<<"$SHOWN")"
         fi

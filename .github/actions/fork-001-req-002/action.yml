@@ -12,7 +12,7 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-001 0.1.0 FORK-001.REQ-002 FORK-001.CHECK-002
         NAME="${OSERA_REPOSITORY##*/}"
-        expect "repository name is patch-<name>: the patch- prefix, then the upstream repository or artifact being patched"
+        expect "repository name is patch-<name>: the patch- prefix, then the upstream repository or artifact being patched; the name should not include osera, the organisation carries it"
 
         # 1. the name must start with patch-
         case "$NAME" in
@@ -23,19 +23,27 @@ runs:
             ;;
         esac
 
-        # 2. is the repository a GitHub fork (from the run context when available)
+        # 2. the name should not include osera (a SHOULD NOT of FORK-001): a warning, never a failure
+        STATUS=pass
+        NOTE=""
+        if grep -qi osera <<<"$NAME"; then
+          STATUS=warn
+          NOTE="; the name includes osera, which FORK-001 says it should not: the organisation carries the OSERA identity"
+        fi
+
+        # 3. is the repository a GitHub fork (from the run context when available)
         if [ -n "$OSERA_IS_FORK" ]; then
           given github.event.repository.fork "$OSERA_IS_FORK"
         fi
         if [ "$OSERA_IS_FORK" = "false" ]; then
-          record pass "name $NAME has the patch- prefix; the repository is not a GitHub fork, so the suffix must be the artifact name, which the gate checks against the artifact"
+          record "$STATUS" "name $NAME has the patch- prefix; the repository is not a GitHub fork, so the suffix must be the artifact name, which the gate checks against the artifact$NOTE"
         fi
 
-        # 3. the suffix compared with the upstream repository the fork was made from
+        # 4. the suffix compared with the upstream repository the fork was made from
         step "reading the fork parent from the GitHub API"
         PARENT="$(ev gh api "repos/$OSERA_REPOSITORY" --jq '.parent.full_name // "none"')"
         if [ "$NAME" = "patch-${PARENT##*/}" ]; then
-          record pass "name $NAME, the suffix is the upstream repository name (forked from $PARENT)"
+          record "$STATUS" "name $NAME, the suffix is the upstream repository name (forked from $PARENT)$NOTE"
         else
-          record pass "name $NAME has the patch- prefix; the suffix is not the upstream repository name (forked from $PARENT), so it must be the artifact name, which the gate checks against the artifact"
+          record "$STATUS" "name $NAME has the patch- prefix; the suffix is not the upstream repository name (forked from $PARENT), so it must be the artifact name, which the gate checks against the artifact$NOTE"
         fi
