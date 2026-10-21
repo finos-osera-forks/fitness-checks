@@ -38,6 +38,8 @@ runs:
         NEW="$(awk -F'\t' '$2 != "-" || $3 != "-" || $4 != "-" {print "yes"; exit}' <<<"$FIXES")"
 
         # 4. each fix against its rule; a missing CVE is listed apart, as a warning
+        #    A compare URL may start one commit before the first one it names, written <a>^ or <a>~1: the same commit on
+        #    GitHub, and ~1 for a producer whose tools refuse ^ in a URL, as Java's URI parser does (Moderne, 21 Oct 2026)
         if [ "$NEW" = yes ]; then
           BAD="$(awk -F'\t' '
             {
@@ -54,7 +56,7 @@ runs:
               if ($4 == "-" && $5 == "-") {
                 why = why " no patch_commit_url and no not_applicable_rationale"
               }
-              if ($4 != "-" && $4 !~ /^https:\/\/github\.com\/[^\/]+\/[^\/]+\/(commit\/[0-9a-f]+|compare\/[0-9a-f]+\^?\.\.\.[0-9a-f]+)$/) {
+              if ($4 != "-" && $4 !~ /^https:\/\/github\.com\/[^\/]+\/[^\/]+\/(commit\/[0-9a-f]+|compare\/[0-9a-f]+(\^|~1)?\.\.\.[0-9a-f]+)$/) {
                 why = why " patch_commit_url not a GitHub commit or compare URL"
               }
               if (why != "") {
