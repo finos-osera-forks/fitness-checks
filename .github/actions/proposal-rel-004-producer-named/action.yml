@@ -1,5 +1,5 @@
 name: CP-REL-004-01 (proposal)
-description: "CP-REL-004-01 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52), not a requirement on the site: the evidence file has a producer line. Warns, never fails"
+description: "CP-REL-004-01 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52), not a requirement on the site: the evidence file has a producer line. Advisory, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
@@ -14,10 +14,10 @@ runs:
         F=.osera/patch-evidence.yaml
         expect "$F names the producer (producer: <id as in the approved producers file>)"
 
-        # 1. the evidence file must be in the repository at the tag (a proposal: warn, never fail)
+        # 1. the evidence file must be in the repository at the tag (a proposal: a fail is advisory, never the run's)
         step "reading $F"
         if [ ! -f "$F" ]; then
-          record warn "$F is not in the repository at $OSERA_TAG"
+          record fail "$F is not in the repository at $OSERA_TAG"
           exit 0
         fi
 
@@ -26,5 +26,5 @@ runs:
         if [ -n "$P" ]; then
           record pass "producer: $P"
         else
-          record warn "no producer line in $F"
+          record fail "no producer line in $F"
         fi

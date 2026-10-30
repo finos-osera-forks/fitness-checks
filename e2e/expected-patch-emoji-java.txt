@@ -1,20 +1,20 @@
-FORK-001.REQ-001 fail
-FORK-001.REQ-002 pass
-FORK-002.REQ-001 fail
-FORK-003.REQ-001 fail
-REL-001.REQ-001 fail
-SRC-002.REQ-001 fail
-SRC-002.REQ-002 not-applicable
-SRC-003.REQ-001 not-applicable
-CP-REL-004-01 pass
-CP-REL-004-02 warn
-CP-REL-004-03 warn
-APP-001.REQ-001 not-tested
-EVD-001.REQ-001 not-tested
-FORK-004.REQ-001 pass
-FORK-004.REQ-002 pass
-FORK-004.REQ-003 warn
-REL-006.REQ-001 not-tested
-REL-008.REQ-001 not-tested
-REL-008.REQ-002 not-tested
-SRC-001.REQ-001 not-tested
+FORK-001.CHECK-001 fail blocking
+FORK-001.CHECK-002 pass blocking
+FORK-002.CHECK-001 fail blocking
+FORK-003.CHECK-001 fail blocking
+REL-001.CHECK-001 fail blocking
+SRC-002.CHECK-001 fail blocking
+SRC-002.CHECK-002 not applicable advisory
+SRC-003.CHECK-001 not applicable blocking
+CP-REL-004-01 pass advisory
+CP-REL-004-02 fail advisory
+CP-REL-004-03 fail advisory
+APP-001.CHECK-001 fail observe
+EVD-001.CHECK-001 fail observe
+FORK-004.CHECK-001 pass observe
+FORK-004.CHECK-002 pass observe
+FORK-004.CHECK-003 pass observe
+REL-006.CHECK-001 fail observe
+REL-008.CHECK-001 fail observe
+REL-008.CHECK-002 fail observe
+SRC-001.CHECK-001 fail observe

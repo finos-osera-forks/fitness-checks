@@ -1,5 +1,5 @@
 name: CP-REL-004-02 (proposal)
-description: "CP-REL-004-02 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52): the producer named in the evidence file is in the approved producers. Warns, never fails"
+description: "CP-REL-004-02 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52): the producer named in the evidence file is in the approved producers. Advisory, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
@@ -14,10 +14,10 @@ runs:
         F=.osera/patch-evidence.yaml
         expect "the producer named in $F has an entry in the approved producers file for pack $OSERA_PACK"
 
-        # 1. the evidence file and the producer it names (a proposal: warn, never fail)
+        # 1. the evidence file and the producer it names (a proposal: a fail is advisory, never the run's)
         step "reading $F and the approved producers file"
         if [ ! -f "$F" ]; then
-          record warn "$F is not in the repository at $OSERA_TAG"
+          record fail "$F is not in the repository at $OSERA_TAG"
           exit 0
         fi
         P="$(ev yq -r '.producer // ""' "$F")"
@@ -26,7 +26,7 @@ runs:
         PACK="$(ev yq -r '.applies_to_pack // ""' "$OSERA_APPROVED_PRODUCERS")"
         IDS="$(ev yq -r '.producers[].id' "$OSERA_APPROVED_PRODUCERS")"
         if [ "$PACK" != "$OSERA_PACK" ]; then
-          record warn "the approved producers file applies to '$PACK', not $OSERA_PACK"
+          record fail "the approved producers file applies to '$PACK', not $OSERA_PACK"
           exit 0
         fi
 
@@ -34,5 +34,5 @@ runs:
         if grep -qxF "$P" <<<"$IDS"; then
           record pass "producer '$P' has an entry ($(wc -l <<<"$IDS" | tr -d ' ') entries in the file)"
         else
-          record warn "producer '$P' has no entry; ids present: $(paste -sd, - <<<"$IDS")"
+          record fail "producer '$P' has no entry; ids present: $(paste -sd, - <<<"$IDS")"
         fi

@@ -15,5 +15,6 @@ runs:
 
         # 1. the check reads feed metadata (its type in the standard is feed-metadata): the feed entries and the
         #    dependency coordinates. The exchange publishes the feed after promotion, and the recipient's estate is the
-        #    bank's; neither is in the patch repository at the tag.
-        record not-tested "APP-001 reads the feed entries and the dependency coordinates of a recipient's estate; the feed is published by the exchange after promotion and the estate is the recipient's, neither is in the patch repository at $OSERA_TAG"
+        #    bank's; neither is in the patch repository at the tag. A fail with the reason, severity observe: it never
+        #    changes the result.
+        record fail "not tested: APP-001 reads the feed entries and the dependency coordinates of a recipient's estate; the feed is published by the exchange after promotion and the estate is the recipient's, neither is in the patch repository at $OSERA_TAG"

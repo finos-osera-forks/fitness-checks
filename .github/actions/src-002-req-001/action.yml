@@ -12,18 +12,20 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-002 0.1.0 SRC-002.REQ-001 SRC-002.CHECK-001
         F=.osera/patch-evidence.yaml
-        expect "every entry under fixes in $F links the upstream fix with an https URL: upstream_fix_url or advisory_url, and patch_commit_url a GitHub commit or compare URL unless not_applicable_rationale says why there is none (files with those fields); upstream otherwise; a CVE named in each, a warning when not"
+        expect "every entry under fixes in $F links the upstream fix with an https URL: upstream_fix_url or advisory_url, and patch_commit_url a GitHub commit or compare URL unless not_applicable_rationale says why there is none (files with those fields); upstream otherwise; a CVE named in each, a note when not"
 
         # The standard names upstream_fix_url and patch_commit_url as the check's evidence; advisory_url is ours, for an
         # upstream advisory when no upstream commit is public (Francesco, 19 Oct 2026: all three, one link filled). A
         # file that uses none of the three keeps the earlier rule, the https link under upstream. The links are checked
         # by their shape, not opened: the check is that a link is present (SRC-002.CHECK-001, partially automated). A
-        # fix without a CVE is a warning: the standard lists the vulnerability identifier as a SHOULD of the evidence.
+        # fix without a CVE passes the check and gets a second row, SRC-002.CHECK-001.NOTE, fail advisory: the standard
+        # lists the vulnerability identifier as a SHOULD of the evidence.
 
         # 1. the evidence file must be in the repository at the tag
         step "reading $F"
         if [ ! -f "$F" ]; then
           record fail "$F is not in the repository at $OSERA_TAG"
+          exit 1
         fi
 
         # 2. one line per fix, tab separated, - for a value that is missing or empty: the CVE, upstream_fix_url,
@@ -31,6 +33,7 @@ runs:
         FIXES="$(ev yq -r '.fixes // [] | .[] | [(.cve // "-"), (.upstream_fix_url // "-"), (.advisory_url // "-"), (.patch_commit_url // "-"), (.not_applicable_rationale // "-"), (.upstream // "-")] | map(select(. != "") // "-") | @tsv' "$F")"
         if [ -z "$FIXES" ]; then
           record fail "$F has no fixes list"
+          exit 1
         fi
         N="$(wc -l <<<"$FIXES" | tr -d ' ')"
 
@@ -73,11 +76,12 @@ runs:
         fi
         NOCVE="$(awk -F'\t' '$1 == "-"' <<<"$FIXES" | wc -l | tr -d ' ')"
 
-        # 5. the verdict: a link missing fails, a CVE missing warns
+        # 5. the verdict: a link missing fails; a CVE missing passes with a note
         if [ -n "$BAD" ]; then
           record fail "$SEEN; fix(es) without the links: $(paste -sd';' - <<<"$BAD")"
         elif [ "$NOCVE" -gt 0 ]; then
-          record warn "$N fix(es) with their links ($SEEN); $NOCVE fix(es) name no CVE, which the evidence should: $(paste -sd';' - <<<"$SHOWN")"
+          note "$NOCVE of $N fix(es) name no CVE, which SRC-002 says the evidence should: $(paste -sd';' - <<<"$SHOWN")"
+          record pass "$N fix(es) with their links ($SEEN); $NOCVE fix(es) name no CVE, see the note: $(paste -sd';' - <<<"$SHOWN")"
         else
           record pass "$N fix(es), each with a CVE and its links ($SEEN): $(paste -sd';' - <<<"$SHOWN")"
         fi

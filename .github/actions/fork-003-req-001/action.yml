@@ -19,22 +19,21 @@ runs:
         TAGS="$(ev git tag --list "$BASE" '*baseline*')"
         if ! grep -qxF "$BASE" <<<"$TAGS"; then
           record fail "no tag $BASE (tags with baseline in the name: $(paste -sd, - <<<"${TAGS:-none}"))"
+          exit 1
         fi
 
         # 2. the two commits: baseline and release
         BASE_SHA="$(ev git rev-parse "refs/tags/${BASE}^{commit}")"
         REL_SHA="$(ev git rev-parse "refs/tags/${OSERA_TAG}^{commit}")"
 
-        # 3. the evidence file's baseline line, when it has one, names the same tag: a SHOULD of FORK-003, so a
-        #    warning, never a failure; a file or a line that is not there is not flagged
-        STATUS=pass
-        NOTE=""
+        # 3. the evidence file's baseline line, when it has one, names the same tag: a SHOULD of FORK-003, so the
+        #    check passes on the tag and a second row, FORK-003.CHECK-001.NOTE, fail advisory, says what the file
+        #    names; a file or a line that is not there is not flagged
         if [ -f "$F" ]; then
           step "reading the baseline line of $F"
           LINE="$(ev yq -r '.baseline // ""' "$F")"
           if [ -n "$LINE" ] && [ "$LINE" != "$BASE" ]; then
-            STATUS=warn
-            NOTE="; $F says baseline: $LINE, not $BASE"
+            note "$F says baseline: $LINE, not $BASE, which FORK-003 says the evidence should name"
           fi
         fi
 
@@ -43,7 +42,7 @@ runs:
           record fail "$BASE and $OSERA_TAG point to the same commit $BASE_SHA, the baseline must come before the patch"
         elif ev git merge-base --is-ancestor "$BASE_SHA" "$REL_SHA" >/dev/null; then
           N="$(ev git rev-list --count "$BASE_SHA..$REL_SHA")"
-          record "$STATUS" "$BASE is $BASE_SHA, $N commit(s) before $OSERA_TAG ($REL_SHA)$NOTE"
+          record pass "$BASE is $BASE_SHA, $N commit(s) before $OSERA_TAG ($REL_SHA)"
         else
           record fail "$BASE ($BASE_SHA) is not an ancestor of $OSERA_TAG ($REL_SHA)"
         fi

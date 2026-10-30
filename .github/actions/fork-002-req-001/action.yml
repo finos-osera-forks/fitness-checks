@@ -11,11 +11,13 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-002 0.1.0 FORK-002.REQ-001 FORK-002.CHECK-001
-        expect "a branch patch/$VERSION or patch/$LINE exists and contains the release tag $OSERA_TAG"
+        expect "a branch patch/$VERSION, patch/$LINE or patch/$MAJOR exists and contains the release tag $OSERA_TAG"
 
-        # 1. the patch branches that contain the release tag, among the two names the standard allows
+        # 1. the patch branches that contain the release tag, among the three names the standard allows: the version
+        #    itself, the minor line (patch/5.3.x) or the major line (patch/5.x); <version> "SHOULD identify the major,
+        #    minor, or maintenance line" (FORK-002; Francesco, 30 Oct 2026: patch/<major>.x is accepted)
         step "listing the patch branches"
-        WITH_TAG="$(ev git branch -r --list "origin/patch/$VERSION" "origin/patch/$LINE" --contains "refs/tags/$OSERA_TAG")"
+        WITH_TAG="$(ev git branch -r --list "origin/patch/$VERSION" "origin/patch/$LINE" "origin/patch/$MAJOR" --contains "refs/tags/$OSERA_TAG")"
         WITH_TAG="$(sed 's/^[ *]*//' <<<"$WITH_TAG" | paste -sd, -)"
 
         # 2. every branch with patch in its name, for the message when none matches
@@ -28,5 +30,5 @@ runs:
         elif [ -z "$ALL" ]; then
           record fail "no branch with patch in its name"
         else
-          record fail "branches present: $ALL; none is patch/$VERSION or patch/$LINE containing $OSERA_TAG"
+          record fail "branches present: $ALL; none is patch/$VERSION, patch/$LINE or patch/$MAJOR containing $OSERA_TAG"
         fi

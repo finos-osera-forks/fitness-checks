@@ -16,14 +16,15 @@ runs:
 
         # Our proposal, the standard defines no field: the scan is looked for under the names of the check's evidence in
         # the standard (build_security_scan_tool, scan_scope, scan_result), at any depth of the file. The evidence format
-        # is not defined, so a value is never judged: found, the record asks for a person to review it; not found, the
-        # check is not tested.
+        # is not defined, so a value is never judged: found, the row asks for a person to review it; not found, the
+        # check could not be tested. Either way the row is a fail with the reason, severity observe: it never changes
+        # the result.
         WHY="the working group has not defined the scanning expectations nor the evidence format (REL-008, observe mode rationale)"
 
         # 1. the evidence file must be in the repository at the tag
         step "reading $F"
         if [ ! -f "$F" ]; then
-          record not-tested "$F is not in the repository at $OSERA_TAG; $WHY"
+          record fail "not tested: $F is not in the repository at $OSERA_TAG; $WHY"
           exit 0
         fi
 
@@ -41,7 +42,7 @@ runs:
 
         # 3. the verdict
         if [ -z "$FOUND" ]; then
-          record not-tested "$WHY; $F has none of build_security_scan_tool, scan_scope, scan_result"
+          record fail "not tested: $WHY; $F has none of build_security_scan_tool, scan_scope, scan_result"
         else
-          record manual-evidence-required "scan evidence found:$FOUND; missing:${MISSING:- none}; $WHY, so the values are shown, not judged"
+          record fail "manual evidence required: scan evidence found:$FOUND; missing:${MISSING:- none}; $WHY, so the values are shown, not judged"
         fi

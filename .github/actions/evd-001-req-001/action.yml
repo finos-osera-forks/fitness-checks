@@ -20,24 +20,26 @@ runs:
         # or at patch.recipient_guidance (the standards repository's evidence example).
         WHY="the standard has not decided where recipient guidance is published (EVD-001, maturity note)"
 
+        # A check that could not be tested is a fail with the reason, severity observe: it never changes the result.
+
         # 1. the schema, from the standards repository at the pack ref
         step "reading the schema $SCHEMA"
         if [ ! -f "$SCHEMA" ]; then
-          record not-tested "the schema $SCHEMA is not in the standards repository checked out at the pack ref"
+          record fail "not tested: the schema $SCHEMA is not in the standards repository checked out at the pack ref"
           exit 0
         fi
 
         # 2. the evidence file must be in the repository at the tag
         step "reading $F"
         if [ ! -f "$F" ]; then
-          record not-tested "$F is not in the repository at $OSERA_TAG; $WHY"
+          record fail "not tested: $F is not in the repository at $OSERA_TAG; $WHY"
           exit 0
         fi
 
         # 3. the guidance, at either place, as JSON
         GUIDANCE="$(ev yq -o=json -I=0 '.recipient_guidance // .patch.recipient_guidance // null' "$F")"
         if [ "$GUIDANCE" = "null" ]; then
-          record not-tested "$WHY; $F has no recipient_guidance and no patch.recipient_guidance"
+          record fail "not tested: $WHY; $F has no recipient_guidance and no patch.recipient_guidance"
           exit 0
         fi
 
@@ -46,7 +48,7 @@ runs:
         RC=0
         PROBLEMS="$(ev jq -r --slurpfile schema "$SCHEMA" --arg name recipient_guidance -f "$GITHUB_ACTION_PATH/../../../lib/schema.jq" <<<"$GUIDANCE")" || RC=$?
         if [ "$RC" -ne 0 ]; then
-          record not-tested "the guidance could not be checked against $SCHEMA (jq exit $RC)"
+          record fail "not tested: the guidance could not be checked against $SCHEMA (jq exit $RC)"
           exit 0
         fi
 
@@ -54,7 +56,7 @@ runs:
         UNHANDLED="$(grep '^unhandled keyword: ' <<<"$PROBLEMS" || true)"
         PROBLEMS="$(grep -v '^unhandled keyword: ' <<<"$PROBLEMS" || true)"
         if [ -n "$UNHANDLED" ]; then
-          record warn "$SCHEMA uses what this check does not handle, the guidance is not judged valid: $(paste -sd';' - <<<"$UNHANDLED"); problems found: $(paste -sd';' - <<<"${PROBLEMS:-none}")"
+          record fail "$SCHEMA uses what this check does not handle, the guidance is not judged valid: $(paste -sd';' - <<<"$UNHANDLED"); problems found: $(paste -sd';' - <<<"${PROBLEMS:-none}")"
           exit 0
         fi
 
@@ -62,5 +64,5 @@ runs:
         if [ -z "$PROBLEMS" ]; then
           record pass "recipient guidance valid against $SCHEMA: $GUIDANCE"
         else
-          record warn "recipient guidance not valid against $SCHEMA: $(paste -sd';' - <<<"$PROBLEMS")"
+          record fail "recipient guidance not valid against $SCHEMA: $(paste -sd';' - <<<"$PROBLEMS")"
         fi

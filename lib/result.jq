@@ -5,28 +5,39 @@
 # Builds result.json from the per requirement records (jq -s: the input is the array of all records).
 # Arguments: $pack $pack_checksum $repo $release $commit $producer $library $registry_ref $evidence_sha $rehearsal
 #            $registry_entry (JSON: the producer's staging_account and github_users copied from the registry, or null) $tag_actor
-#            $observe (JSON: the requirement ids of the pack's observe_standards).
+#            $observe (JSON: the requirement ids of the pack's observe_standards)
+#            $required (JSON: the check ids of the pack's included_standards, the checks the gate refuses on).
 
-# The one rollup, used per standard and at the top: any fail is a fail, then warn, then not-tested, then pass;
-# not-applicable only when everything underneath is.
+# The schema of the result: the rows are in the gate's shape (id, result, severity, reason). The gate reads this
+# schema, and a result without one in the library's first shape.
+def schema:
+  "https://osera.finos.org/fitness-result/0.2.0";
+
+# The one rollup, used per standard and at the top: fail when any row failed that the pack requires (the gate
+# refuses it, whatever its severity) or that carries severity blocking, else pass; "not applicable" only when every
+# row is. The gate does not read it: it reads the rows against its own pack list; this rule keeps CI and the gate
+# in agreement.
 def rollup:
-  map(.status) as $s
-  | if   any($s[]; . == "fail") then "fail"
-    elif any($s[]; . == "warn" or . == "manual-evidence-required") then "warn"
-    elif any($s[]; . == "not-tested") then "not-tested"
-    elif any($s[]; . == "pass") then "pass"
-    else "not-applicable" end;
+  if any(.[]; .result == "fail" and ((.id | IN($required[])) or .severity == "blocking")) then
+    "fail"
+  elif all(.[]; .result == "not applicable") then
+    "not applicable"
+  else
+    "pass"
+  end;
 
-# the requirements of the pack, the ControlPlane proposals (CP-*) and the observe checks, kept apart: only $checks
-# counts in the rollup, and the gate reads only checks, so a proposal or an observe check never changes the result
+# the requirements of the pack (with their .NOTE rows), the ControlPlane proposals (CP-*) and the observe checks,
+# kept apart: only $checks counts in the rollup, and the gate reads only checks, so a proposal or an observe check
+# never changes the result
 (map(select((.requirement | startswith("CP-") | not) and (.requirement | IN($observe[]) | not)))) as $checks
 | (map(select(.requirement | startswith("CP-")))) as $proposals
 | (map(select(.requirement | IN($observe[])))) as $observe_checks
 
-# one status per standard, the fitness page's view
-| ($checks | group_by(.standard) | map({standard: .[0].standard, standard_version: .[0].standard_version, status: rollup})) as $standards
+# one result per standard, the fitness page's view
+| ($checks | group_by(.standard) | map({standard: .[0].standard, standard_version: .[0].standard_version, result: rollup})) as $standards
 
 | {
+    schema: schema,
     standard_pack: $pack,
     pack_checksum: (if $pack_checksum == "" then null else $pack_checksum end),
     registry_ref: (if $registry_ref == "" then null else $registry_ref end),
@@ -46,7 +57,7 @@ def rollup:
         upload_account: null
       }
     },
-    result: ($standards | rollup),
+    result: ($checks | rollup),
     signature: (if $rehearsal == "true" then "rehearsal, not signed: the gate never accepts this result" else "see the GitHub artifact attestation on this file" end),
     standards: $standards,
     checks: $checks,
