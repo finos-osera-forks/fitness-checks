@@ -41,7 +41,11 @@ mkdir -p "$OSERA_RESULTS_DIR"
 #   Java     v5.3.39.1-osera-00001        -> 5.3.39,      5.3.x,  v5.3.39+patch.baseline   (REL-003-JAVA: the .N the patch added is dropped)
 #   Java     v1.33.1-osera-00001          -> 1.33,        1.33.x, v1.33+patch.baseline     (a two part upstream, the same rule)
 #   Java     v5.6.15.Final-osera-00001    -> 5.6.15.Final, 5.6.x, v5.6.15.Final+patch.baseline (qualified base, no .N)
+#   npm      v4.1.2-osera-00001           -> 4.1.1,       4.1.x,  v4.1.1+patch.baseline    (REL-003-JAVASCRIPT: the patch number is the baseline's plus one)
 # The Java rule is the gate's (REL-003-JAVA.CHECK-001): the shortest base, then an optional .N, then -osera-NNNNN.
+# The npm rule is REL-003-JAVASCRIPT's (a Draft for OSERA-SP-0.2.0): "A patch to 1.4.1 is 1.4.2-osera-00001".
+# The two forms look alike, so the project decides: a package.json and no pom.xml at the root of the
+# patch repository, checked out at the root of the workspace, is an npm project (lab, 22 Oct 2026).
 upstream_version_of() {
   local tag="$1"
   local version
@@ -53,17 +57,24 @@ upstream_version_of() {
     printf '%s\n' "$version"
     return 0
   fi
-  # 3. Java form: drop the -osera-NNNNN suffix
+  # 3. npm form: the patch number less one, in an npm project only
+  if [[ -f package.json && ! -f pom.xml && "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)-osera-[0-9]{5}$ ]]; then
+    if [[ "${BASH_REMATCH[3]}" -gt 0 ]]; then
+      printf '%s.%s.%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "$((BASH_REMATCH[3] - 1))"
+      return 0
+    fi
+  fi
+  # 4. Java form: drop the -osera-NNNNN suffix
   if [[ "$version" == *-osera-[0-9]* ]]; then
     version="${version%-osera-*}"
-    # 4. the .N the patch added, dropped whatever the upstream's number of components (the gate's rule)
+    # 5. the .N the patch added, dropped whatever the upstream's number of components (the gate's rule)
     if [[ "$version" =~ ^(.+)\.[0-9]+$ ]]; then
       version="${BASH_REMATCH[1]}"
     fi
     printf '%s\n' "$version"
     return 0
   fi
-  # 5. neither form: the tag as it is, the checks report the mismatch
+  # 6. neither form: the tag as it is, the checks report the mismatch
   printf '%s\n' "$version"
 }
 VERSION="$(upstream_version_of "$OSERA_TAG")"
