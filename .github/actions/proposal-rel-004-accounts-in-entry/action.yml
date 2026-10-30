@@ -1,5 +1,5 @@
 name: CP-REL-004-03 (proposal)
-description: "CP-REL-004-03 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52): the account that pushed the tag and the accounts on the commits between the baseline tag and the release tag are all in that producer entry's github_users. Warns, never fails"
+description: "CP-REL-004-03 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52): the account that pushed the tag and the accounts on the commits between the baseline tag and the release tag are all in that producer entry's github_users. Advisory, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
@@ -14,20 +14,20 @@ runs:
         F=.osera/patch-evidence.yaml
         expect "the account that pushed the tag and every author and committer of the commits between $BASE and $OSERA_TAG are in the producer's github_users"
 
-        # 1. the evidence file, the producer, and the accounts its entry allows (a proposal: warn, never fail)
+        # 1. the evidence file, the producer, and the accounts its entry allows (a proposal: a fail is advisory, never the run's)
         step "reading $F and the approved producers file"
         if [ ! -f "$F" ]; then
-          record warn "$F is not in the repository at $OSERA_TAG"
+          record fail "$F is not in the repository at $OSERA_TAG"
           exit 0
         fi
         P="$(ev yq -r '.producer // ""' "$F")"
         ALLOWED="$(P="$P" ev yq -r '.producers[] | select(.id == env(P)) | .github_users[]' "$OSERA_APPROVED_PRODUCERS" | sort -u)"
         if [ -z "$ALLOWED" ]; then
-          record warn "no approved producers entry with github_users for producer '$P', accounts cannot be checked"
+          record fail "no approved producers entry with github_users for producer '$P', accounts cannot be checked"
           exit 0
         fi
 
-        # 2. without the baseline tag there is no range of commits: the check stops and is recorded not-tested
+        # 2. without the baseline tag there is no range of commits: the check stops and is recorded as fail (could not run)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -44,7 +44,7 @@ runs:
         BAD="$(comm -23 <(echo "$ACCOUNTS") <(echo "$ALLOWED") | paste -sd, -)"
         DETAIL="tag pushed by $OSERA_ACTOR; accounts on the $(wc -l <<<"$SHAS" | tr -d ' ') commit(s) since $BASE: $(paste -sd, - <<<"$ACCOUNTS"); allowed for '$P': $(paste -sd, - <<<"$ALLOWED")"
         if [ -n "$BAD" ]; then
-          record warn "account(s) not in the entry: $BAD. $DETAIL"
+          record fail "account(s) not in the entry: $BAD. $DETAIL"
         else
           record pass "$DETAIL"
         fi

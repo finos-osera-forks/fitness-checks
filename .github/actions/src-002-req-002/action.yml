@@ -13,7 +13,7 @@ runs:
         check_is SRC-002 0.1.0 SRC-002.REQ-002 SRC-002.CHECK-002
         expect "every commit between $BASE and $OSERA_TAG whose message names an upstream commit (cherry picked from, backport of, upstream commit, an Upstream-Commit trailer) carries a Co-authored-by trailer naming the upstream author"
 
-        # 1. without the baseline tag there is no range to look at: the check stops and is recorded not-tested
+        # 1. without the baseline tag there is no range to look at: the check stops and is recorded as fail (could not run)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -23,11 +23,12 @@ runs:
         TOTAL="$(ev git rev-list --count "${BASE}..${OSERA_TAG}")"
         CARRYING="$(ev git log --format=%H "${BASE}..${OSERA_TAG}" -i --extended-regexp --grep='(cherry picked from commit|backport of|upstream commit|upstream-commit:|upstream:) *[0-9a-f]{7,40}')"
         if [ -z "$CARRYING" ]; then
-          record not-applicable "$TOTAL commit(s) between $BASE and $OSERA_TAG, none names an upstream commit"
+          record "not applicable" "$TOTAL commit(s) between $BASE and $OSERA_TAG, none names an upstream commit"
           exit 0
         fi
 
-        # 3. each of those must carry a Co-authored-by trailer with a value (a SHOULD: warn, never fail)
+        # 3. each of those must carry a Co-authored-by trailer with a value (a SHOULD: the standard makes this check
+        #    advisory, so a fail here never changes the result nor blocks at the gate)
         MISSING=""
         for C in $CARRYING; do
           MSG="$(ev git log -1 --format=%B "$C")"
@@ -36,7 +37,7 @@ runs:
           fi
         done
         if [ -n "$MISSING" ]; then
-          record warn "commit(s) naming an upstream commit without a Co-authored-by trailer:$MISSING"
+          record fail "commit(s) naming an upstream commit without a Co-authored-by trailer:$MISSING"
         else
           record pass "$(wc -l <<<"$CARRYING" | tr -d ' ') commit(s) name an upstream commit and carry a Co-authored-by trailer"
         fi

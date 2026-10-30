@@ -23,13 +23,13 @@ runs:
         RC=0
         LISTED="$(ev env -u GH_TOKEN -u GITHUB_TOKEN GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "$URL" "refs/tags/${OSERA_TAG}" "refs/tags/${OSERA_TAG}^{}")" || RC=$?
         if [ "$RC" -ne 0 ]; then
-          record warn "$URL could not be read without credentials (git ls-remote exit $RC)"
+          record fail "$URL could not be read without credentials (git ls-remote exit $RC)"
           exit 0
         fi
 
         # 3. the tag must be there (a rehearsal pushes no tag, so the tag is missing in a rehearsal)
         if [ -z "$LISTED" ]; then
-          record warn "$URL answers without credentials, but has no tag $OSERA_TAG"
+          record fail "$URL answers without credentials, but has no tag $OSERA_TAG"
           exit 0
         fi
 
@@ -40,5 +40,5 @@ runs:
         if [ "$PUBLIC_SHA" = "$REL_SHA" ]; then
           record pass "$URL serves $OSERA_TAG at $REL_SHA without credentials"
         else
-          record warn "$URL serves $OSERA_TAG at $PUBLIC_SHA without credentials, this run checked out $REL_SHA"
+          record fail "$URL serves $OSERA_TAG at $PUBLIC_SHA without credentials, this run checked out $REL_SHA"
         fi

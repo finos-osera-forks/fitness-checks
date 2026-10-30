@@ -31,7 +31,7 @@ on:
         type: string
     outputs:
       result:
-        description: 'pass, warn, fail or not-tested'
+        description: 'pass or fail; "not applicable" when every check is'
         value: ${{ jobs.fitness.outputs.result }}
 
 jobs:
@@ -99,6 +99,7 @@ jobs:
             echo "OSERA_RESULTS_DIR=$RUNNER_TEMP/osera-results"
             echo "OSERA_PACK=OSERA-SP-0.1.0"
             echo "OSERA_PACK_FILE=.osera-standards/docs/catalog/packs/OSERA-SP-0.1.0.json" # the pack file the checks compare their version with, at STANDARDS_REF
+            echo "OSERA_STANDARDS_DIR=.osera-standards/docs/_standards" # the standards' files at STANDARDS_REF, each check's severity in the front matter
             # what GitHub itself says about the repository the workflow runs in; empty when the library tests a reference, the checks then ask the API
             if [ "$TARGET" = "$CALLER" ]; then echo "OSERA_OWNER=$OWNER"; echo "OSERA_OWNER_ID=$OWNER_ID"; echo "OSERA_IS_FORK=$IS_FORK"; fi
           } >> "$GITHUB_ENV"
@@ -277,10 +278,11 @@ jobs:
             ${{ runner.temp }}/osera-results/result.sigstore.json
             ${{ runner.temp }}/osera-results/patch-evidence.yaml
 
-      # 7. The verdict: a producer's run is red when a blocking check failed or could not run.
-      #    When the library tests itself, the e2e compare job decides instead.
+      # 7. The verdict: a producer's run is red when the result is fail, that is when a blocking check failed or
+      #    could not run; an advisory or observe fail leaves it green. When the library tests itself, the e2e
+      #    compare job decides instead.
       - name: Blocking checks decide
         if: ${{ github.repository != env.LIBRARY }}
         env:
           RESULT: ${{ steps.result.outputs.result }}
-        run: test "$RESULT" = pass || test "$RESULT" = warn
+        run: test "$RESULT" != fail

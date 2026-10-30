@@ -18,14 +18,15 @@ runs:
         # in the standard (unresolved_findings, finding_disposition, not_applicable_rationale), at any depth of the file
         # outside the fixes list: a fix's not_applicable_rationale is an SRC-002 note on that fix, not a scan disposition
         # (Francesco, 19 Oct 2026).
-        # The evidence format is not defined, so a value is never judged: found, the record asks for a person to review
-        # it; not found, the check is not tested.
+        # The evidence format is not defined, so a value is never judged: found, the row asks for a person to review
+        # it; not found, the check could not be tested. Either way the row is a fail with the reason, severity observe:
+        # it never changes the result.
         WHY="the working group has not defined the scanning expectations nor the evidence format (REL-008, observe mode rationale)"
 
         # 1. the evidence file must be in the repository at the tag
         step "reading $F"
         if [ ! -f "$F" ]; then
-          record not-tested "$F is not in the repository at $OSERA_TAG; $WHY"
+          record fail "not tested: $F is not in the repository at $OSERA_TAG; $WHY"
           exit 0
         fi
 
@@ -40,7 +41,7 @@ runs:
 
         # 3. the verdict
         if [ -z "$FOUND" ]; then
-          record not-tested "$WHY; $F has none of unresolved_findings, finding_disposition, not_applicable_rationale"
+          record fail "not tested: $WHY; $F has none of unresolved_findings, finding_disposition, not_applicable_rationale"
         else
-          record manual-evidence-required "finding evidence found:$FOUND; $WHY, so the values are shown, not judged"
+          record fail "manual evidence required: finding evidence found:$FOUND; $WHY, so the values are shown, not judged"
         fi

@@ -6,7 +6,7 @@
 # forks of libraries far from any line OSERA carries: the known good patch-jfiglet (ASCII art banners) and the known
 # bad patch-emoji-java, one mistake per blocking check (the release tag on no patch/ branch, the baseline at the
 # release commit, a fix with no upstream link, no test record). FORK-001 fails on both on purpose, the library expects
-# finos-osera-forks. Every status is compared with the expected list under e2e/. Green before v1 moves.
+# finos-osera-forks. Every row's id, result and severity is compared with the expected list under e2e/. Green before v1 moves.
 name: e2e
 
 on:
@@ -52,15 +52,16 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: osera-fitness-result-*
-      - name: Compare with the expected statuses
+      - name: Compare with the expected rows
         run: |
           failed=0
           for ref in patch-jfiglet patch-emoji-java; do
-            jq -r '(.checks + .proposals + .observe)[] | "\(.requirement) \(.status)"' "osera-fitness-result-$ref/result.json" > "actual-$ref.txt"
+            jq -r '(.checks + .proposals + .observe)[] | "\(.id) \(.result) \(.severity)"' "osera-fitness-result-$ref/result.json" > "actual-$ref.txt"
             if diff "e2e/expected-$ref.txt" "actual-$ref.txt"; then
-              echo "e2e $ref: every status as expected"
+              echo "e2e $ref: every row as expected"
             else
-              echo "e2e $ref: DIFFERS from the expected list"; failed=1
+              echo "e2e $ref: DIFFERS from the expected list"
+              failed=1
             fi
           done
           exit "$failed"

@@ -64,7 +64,7 @@ runs:
           done
         }
 
-        # 1. without the baseline tag there is no list of new files: the check stops and is recorded not-tested
+        # 1. without the baseline tag there is no list of new files: the check stops and is recorded as fail (could not run)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -73,7 +73,7 @@ runs:
         ALL="$(ev git diff --name-only --diff-filter=A "$BASE" "$OSERA_TAG")"
         ADDED="$(grep -vE "$PLUMBING" <<<"$ALL" || true)"
         if [ -z "$ADDED" ]; then
-          record not-applicable "no source or test file added between $BASE and $OSERA_TAG, beyond the OSERA files"
+          record "not applicable" "no source or test file added between $BASE and $OSERA_TAG, beyond the OSERA files"
           exit 0
         fi
 
@@ -102,10 +102,10 @@ runs:
           fi
         done <<<"$ADDED"
 
-        # 4. the verdict: nothing to compare against is not-applicable, one difference is a fail
+        # 4. the verdict: nothing to compare against is not applicable, one difference is a fail
         N_ADDED="$(wc -l <<<"$ADDED" | tr -d ' ')"
         if [ "$CHECKED" = 0 ]; then
-          record not-applicable "$N_ADDED new file(s), no header convention to compare against${LINES}"
+          record "not applicable" "$N_ADDED new file(s), no header convention to compare against${LINES}"
         elif [ -n "$PROBLEMS" ]; then
           record fail "header differs on:$PROBLEMS${LINES}"
         else

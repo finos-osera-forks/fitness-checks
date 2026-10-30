@@ -17,13 +17,14 @@ runs:
         # Our proposal, the standard defines no field: the basis of a fix is read from fixes[].basis (a word, or a map
         # with a type, as in the standards repository's evidence example), and the basis of the whole release from
         # patch.basis.type (the field of that example). The vocabulary is not defined, so a value is never judged:
-        # found, the record asks for a person to review it; not found, the check is not tested.
+        # found, the row asks for a person to review it; not found, the check could not be tested. Either way the row
+        # is a fail with the reason, severity observe: it never changes the result.
         WHY="the working group has not defined the patch basis vocabulary nor where it is recorded (SRC-001, unresolved issue)"
 
         # 1. the evidence file must be in the repository at the tag
         step "reading $F"
         if [ ! -f "$F" ]; then
-          record not-tested "$F is not in the repository at $OSERA_TAG, there is no list of fixes to read; $WHY"
+          record fail "not tested: $F is not in the repository at $OSERA_TAG, there is no list of fixes to read; $WHY"
           exit 0
         fi
 
@@ -32,7 +33,7 @@ runs:
         FIXES="$(ev yq -r '.fixes // [] | .[] | (.cve // "no-cve") + " " + (.upstream_fix_url // .advisory_url // .upstream // "no-upstream") + " basis=" + ((.basis.type // .basis) // "none")' "$F")"
         RELEASE_BASIS="$(ev yq -r '.patch.basis.type // "none"' "$F")"
         if [ -z "$FIXES" ]; then
-          record not-tested "$F has no fixes list; $WHY"
+          record fail "not tested: $F has no fixes list; $WHY"
           exit 0
         fi
 
@@ -40,7 +41,7 @@ runs:
         N="$(wc -l <<<"$FIXES" | tr -d ' ')"
         WITH="$(grep -v ' basis=none$' <<<"$FIXES" || true)"
         if [ -z "$WITH" ] && [ "$RELEASE_BASIS" = "none" ]; then
-          record not-tested "$WHY; $F carries no basis (fixes[].basis and patch.basis.type are absent) for its $N fix(es): $(paste -sd';' - <<<"$FIXES")"
+          record fail "not tested: $WHY; $F carries no basis (fixes[].basis and patch.basis.type are absent) for its $N fix(es): $(paste -sd';' - <<<"$FIXES")"
           exit 0
         fi
 
@@ -49,4 +50,4 @@ runs:
         if [ -n "$WITH" ]; then
           K="$(wc -l <<<"$WITH" | tr -d ' ')"
         fi
-        record manual-evidence-required "basis given for $K of $N fix(es), release basis $RELEASE_BASIS; $WHY, so the values are shown, not judged: $(paste -sd';' - <<<"$FIXES")"
+        record fail "manual evidence required: basis given for $K of $N fix(es), release basis $RELEASE_BASIS; $WHY, so the values are shown, not judged: $(paste -sd';' - <<<"$FIXES")"

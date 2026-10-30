@@ -27,14 +27,14 @@ runs:
 
         # 3. the official organisation
         if [ "$OWNER" != "$OSERA_EXPECTED_ORG" ]; then
-          record warn "repository is in $OWNER, not in the official organisation $OSERA_EXPECTED_ORG"
+          record fail "repository is in $OWNER, not in the official organisation $OSERA_EXPECTED_ORG"
           exit 0
         fi
 
         # 4. a GitHub fork of an upstream repository. The standard does not say yet which upstream repository is the
         #    appropriate one for an artifact line, so the parent is recorded here, not judged.
         if [ "$IS_FORK" != "true" ]; then
-          record warn "repository is in $OSERA_EXPECTED_ORG but is not a GitHub fork, it has no fork relationship to an upstream repository"
+          record fail "repository is in $OSERA_EXPECTED_ORG but is not a GitHub fork, it has no fork relationship to an upstream repository"
         else
           record pass "repository is in $OSERA_EXPECTED_ORG and is a GitHub fork of $PARENT (root of the fork network: $SOURCE); whether that is the appropriate upstream repository is not defined by the standard yet"
         fi

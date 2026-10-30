@@ -1,10 +1,10 @@
 name: write the fitness result
-description: "Collect the per requirement records into result.json: the fitness page's fields, one entry per requirement with expected, observed and the evidence, one status per standard, the ControlPlane proposals and the observe checks underneath, outside the rollup"
+description: "Collect the per requirement records into result.json: the fitness page's fields, one row per requirement in the gate's shape (id, result, severity, reason) with expected and the evidence, one result per standard, the ControlPlane proposals and the observe checks underneath, outside the rollup"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (OSERA_TAG, OSERA_REPOSITORY, OSERA_PACK, OSERA_RESULTS_DIR, OSERA_LIBRARY, OSERA_APPROVED_PRODUCERS, OSERA_ACTOR). No inputs.
 outputs:
   result:
-    description: 'pass, warn, fail or not-tested'
+    description: 'pass or fail; "not applicable" when every check is'
     value: ${{ steps.result.outputs.result }}
   path:
     description: 'where result.json was written'
@@ -18,6 +18,7 @@ runs:
       run: |
         set -euo pipefail
         LIB="$GITHUB_ACTION_PATH/../../../lib"
+        source "$LIB/record.sh"
 
         # 1. what this run was about
         COMMIT="$(git rev-parse "refs/tags/${OSERA_TAG}^{commit}")"
@@ -36,23 +37,34 @@ runs:
         fi
         TAG_ACTOR="${OSERA_ACTOR:-}"
 
-        # 2. exactly one record per expected requirement: a missing one is written as not-tested, an unexpected one stops the run.
+        # 2. exactly one record per expected requirement, plus at most one .NOTE row next to it: a missing record is
+        #    written as a fail row through the library (the check id and the severity looked up as for any row), an
+        #    unexpected one stops the run.
         #    OBSERVE are the requirements of the pack's observe_standards: recorded apart from the rollup, so they never
         #    change the result nor reach the checks the gate reads. REL-007 is not listed: the gate checks it at promotion.
         OBSERVE="FORK-004.REQ-001 FORK-004.REQ-002 FORK-004.REQ-003 SRC-001.REQ-001 REL-006.REQ-001 REL-008.REQ-001 REL-008.REQ-002 EVD-001.REQ-001 APP-001.REQ-001"
-        EXPECTED="FORK-001.REQ-001 FORK-001.REQ-002 FORK-002.REQ-001 FORK-003.REQ-001 SRC-002.REQ-001 SRC-002.REQ-002 SRC-003.REQ-001 REL-001.REQ-001 CP-REL-004-01 CP-REL-004-02 CP-REL-004-03 $OBSERVE"
+        REQUIREMENTS="FORK-001.REQ-001 FORK-001.REQ-002 FORK-002.REQ-001 FORK-003.REQ-001 SRC-002.REQ-001 SRC-002.REQ-002 SRC-003.REQ-001 REL-001.REQ-001 CP-REL-004-01 CP-REL-004-02 CP-REL-004-03 $OBSERVE"
         OBSERVE_JSON="$(tr ' ' '\n' <<<"$OBSERVE" | jq -R . | jq -cs .)"
-        cd "$OSERA_RESULTS_DIR"
-        for R in $EXPECTED; do
-          [ -f "$R.json" ] && continue
+        for R in $REQUIREMENTS; do
+          if [ -f "$OSERA_RESULTS_DIR/$R.json" ]; then
+            continue
+          fi
           S="$(if [[ "$R" == CP-* ]]; then echo REL-004; else echo "${R%%.*}"; fi)"
-          V="$(jq -r --arg s "$S" '[.standards.included_standards[], .standards.observe_standards[] | select(.id == $s) | .version] | first // ""' "$GITHUB_WORKSPACE/$OSERA_PACK_FILE" 2>/dev/null || true)"
-          jq -n --arg r "$R" --arg s "$S" --arg v "$V" \
-                '{standard: $s, standard_version: (if $v == "" then null else $v end), check_version: null,
-                  requirement: $r, check: null, status: "not-tested", expected: "", observed: "the check did not run", evidence: []}' > "$R.json"
+          V="$(pack_version_of "$S")"
+          C="$(check_id_of "$R")"
+          check_is "$S" "$V" "$R" "$C"
+          expect ""
+          record fail "the check did not run" || true
         done
+        trap - EXIT
+        cd "$OSERA_RESULTS_DIR"
         for F in *.json; do
-          grep -qxF "${F%.json}" <<<"$(tr ' ' '\n' <<<"$EXPECTED")" || { echo "unexpected record $F"; exit 1; }
+          NAME="${F%.json}"
+          NAME="${NAME%.note}"
+          if ! grep -qxF "$NAME" <<<"$(tr ' ' '\n' <<<"$REQUIREMENTS")"; then
+            echo "unexpected record $F"
+            exit 1
+          fi
         done
 
         # 3. the evidence file, kept next to the result and named in it by its digest: the gate publishes
@@ -64,14 +76,17 @@ runs:
           cp "$GITHUB_WORKSPACE/.osera/patch-evidence.yaml" "$OSERA_RESULTS_DIR/patch-evidence.yaml"
         fi
 
-        # 3b. the pack file's digest, so the result names exactly which pack it was checked against
+        # 3b. the pack file's digest, so the result names exactly which pack it was checked against, and the check
+        #     ids the pack requires: a failed one makes the result fail whatever its severity, as it does at the gate
         if [ -f "$GITHUB_WORKSPACE/$OSERA_PACK_FILE" ]; then
           PACK_CHECKSUM="sha256:$(sha256sum "$GITHUB_WORKSPACE/$OSERA_PACK_FILE" | cut -d' ' -f1)"
+          REQUIRED_JSON="$(jq -c '[.standards.included_standards[].checks[]]' "$GITHUB_WORKSPACE/$OSERA_PACK_FILE")"
         else
           PACK_CHECKSUM=""
+          REQUIRED_JSON="[]"
         fi
 
-        # 4. the result: the page's fields, one status per standard, one entry per requirement, the proposals,
+        # 4. the result: the page's fields, one result per standard, one row per requirement, the proposals,
         #    the observe checks
         jq -s -f "$LIB/result.jq" \
            --arg pack "$OSERA_PACK" --arg repo "$OSERA_REPOSITORY" --arg release "$OSERA_TAG" \
@@ -81,6 +96,7 @@ runs:
            --arg rehearsal "${OSERA_REHEARSAL:-false}" \
            --argjson registry_entry "$REGISTRY_ENTRY" --arg tag_actor "$TAG_ACTOR" \
            --argjson observe "$OBSERVE_JSON" \
+           --argjson required "$REQUIRED_JSON" \
            ./*.json > result.json
 
         echo "result=$(jq -r .result result.json)" >> "$GITHUB_OUTPUT"

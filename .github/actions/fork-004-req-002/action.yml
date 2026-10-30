@@ -18,7 +18,7 @@ runs:
         # part (LICENSE-APACHE, LICENSE-2.0) and by .txt, .md, .adoc, .rst or .html. License.java is not one.
         PATTERN='(^|/)(licen[cs]e|notice|copying|copyright)([-_][a-z0-9]+(\.[0-9]+)*)?(\.(txt|md|adoc|rst|html))?$'
 
-        # 1. without the baseline tag there is no upstream source to compare with: the check stops and is recorded not-tested
+        # 1. without the baseline tag there is no upstream source to compare with: the check stops and is recorded as fail (could not run)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -29,7 +29,7 @@ runs:
         CANDIDATES="$(ev git diff --name-only "$EMPTY_TREE" "$BASE" -- ':(glob,icase)**/licen[cs]e*' ':(glob,icase)**/notice*' ':(glob,icase)**/copying*' ':(glob,icase)**/copyright*')"
         UPSTREAM="$(grep -iE "$PATTERN" <<<"$CANDIDATES" || true)"
         if [ -z "$UPSTREAM" ]; then
-          record not-applicable "no licence or notice file at $BASE, nothing to preserve"
+          record "not applicable" "no licence or notice file at $BASE, nothing to preserve"
           exit 0
         fi
 
@@ -47,5 +47,5 @@ runs:
         if [ -z "$CHANGED" ]; then
           record pass "$N licence and notice file(s) at $BASE, all unchanged at $OSERA_TAG: $LIST. Whether every patched source file stays under those terms is not checked here"
         else
-          record warn "licence or notice file(s) of $BASE deleted (D) or changed (M) at $OSERA_TAG: $(tr "\t" " " <<<"$CHANGED" | paste -sd, -); upstream files: $LIST"
+          record fail "licence or notice file(s) of $BASE deleted (D) or changed (M) at $OSERA_TAG: $(tr "\t" " " <<<"$CHANGED" | paste -sd, -); upstream files: $LIST"
         fi
