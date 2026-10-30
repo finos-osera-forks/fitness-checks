@@ -13,7 +13,7 @@ APP-001.CHECK-001 fail observe
 EVD-001.CHECK-001 fail observe
 FORK-004.CHECK-001 pass observe
 FORK-004.CHECK-002 pass observe
-FORK-004.CHECK-003 pass observe
+FORK-004.CHECK-003 fail observe
 REL-006.CHECK-001 fail observe
 REL-008.CHECK-001 fail observe
 REL-008.CHECK-002 fail observe
