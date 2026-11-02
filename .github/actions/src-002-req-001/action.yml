@@ -12,7 +12,7 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-002 0.1.0 SRC-002.REQ-001 SRC-002.CHECK-001
         F=.osera/patch-evidence.yaml
-        expect "each fix has a CVE, an https upstream_fix_url or advisory_url, and a GitHub patch_commit_url"
+        expect "each fix has an https upstream_fix_url or advisory_url, and a GitHub patch_commit_url or not_applicable_rationale"
 
         # The standard names upstream_fix_url and patch_commit_url as the check's evidence; advisory_url is ours, for an
         # upstream advisory when no upstream commit is public (Francesco, 19 Oct 2026: all three, one link filled). A
@@ -40,7 +40,7 @@ runs:
         # 3. which rule: the new fields anywhere in the file, or the earlier upstream field
         NEW="$(awk -F'\t' '$2 != "-" || $3 != "-" || $4 != "-" {print "yes"; exit}' <<<"$FIXES")"
         if [ "$NEW" != yes ]; then
-          expect "each fix has a CVE and an https upstream link"
+          expect "each fix has an https upstream link"
         fi
 
         # 4. each fix against its rule: one line per fix, the fix named by its CVE, or by its first link when it has
