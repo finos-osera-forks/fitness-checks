@@ -187,18 +187,19 @@ jobs:
       - name: REL-001.REQ-001
         uses: ./.osera-fitness/.github/actions/rel-001-req-001
         continue-on-error: true
-      - name: CP-REL-004-01 (proposal)
+      - name: CP-REL-004-01
         uses: ./.osera-fitness/.github/actions/proposal-rel-004-producer-named
         continue-on-error: true
-      - name: CP-REL-004-02 (proposal)
+      - name: CP-REL-004-02
         uses: ./.osera-fitness/.github/actions/proposal-rel-004-producer-approved
         continue-on-error: true
-      - name: CP-REL-004-03 (proposal)
+      - name: CP-REL-004-03
         uses: ./.osera-fitness/.github/actions/proposal-rel-004-accounts-in-entry
         continue-on-error: true
 
-      # 4b. The observe checks, one action per requirement of the pack's observe_standards. They run and report,
-      #     they are kept out of the rollup and out of the checks the gate reads, and they never fail the run.
+      # 4b. The observe checks, one action per requirement of the pack's observe_standards. They run and report in
+      #     osera_checks with severity observe; the pack requires none of them, so they never change the result nor
+      #     fail the run.
       #     REL-007 has no action here: it is about the artifact's digest, so the gate checks it at promotion.
       - name: FORK-004.REQ-001 (observe)
         uses: ./.osera-fitness/.github/actions/fork-004-req-001
@@ -278,8 +279,9 @@ jobs:
             ${{ runner.temp }}/osera-results/result.sigstore.json
             ${{ runner.temp }}/osera-results/patch-evidence.yaml
 
-      # 7. The verdict: a producer's run is red when the result is fail, that is when a blocking check failed or
-      #    could not run; an advisory or observe fail leaves it green. When the library tests itself, the e2e
+      # 7. The verdict: a producer's run is red when the result is fail, that is when a check the pack requires
+      #    failed or could not run; an advisory or observe fail, and every row of ours (extra_checks), leaves it
+      #    green. When the library tests itself, the e2e
       #    compare job decides instead.
       - name: Blocking checks decide
         if: ${{ github.repository != env.LIBRARY }}

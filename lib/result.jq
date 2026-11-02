@@ -5,13 +5,15 @@
 # Builds result.json from the per requirement records (jq -s: the input is the array of all records).
 # Arguments: $pack $pack_checksum $repo $release $commit $producer $library $registry_ref $evidence_sha $rehearsal
 #            $registry_entry (JSON: the producer's staging_account and github_users copied from the registry, or null) $tag_actor
-#            $observe (JSON: the requirement ids of the pack's observe_standards)
-#            $required (JSON: the check ids of the pack's included_standards, the checks the gate refuses on).
+#            $required (JSON: the check ids of the pack's included_standards, the checks the gate refuses on)
+#            $included (JSON: the standard ids of the pack's included_standards, the standards summarised in standards)
+#            $standards_order (JSON: the standard ids of the pack, included_standards then observe_standards, in the
+#            pack's order; the rows of osera_checks are sorted by it, then by id).
 
-# The schema of the result: the rows are in the gate's shape (id, result, severity, reason). The gate reads this
-# schema, and a result without one in the library's first shape.
+# The schema of the result: two sections of rows, osera_checks (the checks of the standards) and extra_checks (the
+# checks of ours, CP-...), every row with expected and observed (Francesco, 30 Oct 2026). The gate reads this schema.
 def schema:
-  "https://osera.finos.org/fitness-result/0.2.0";
+  "https://osera.finos.org/fitness-result/0.3.0";
 
 # The one rollup, used per standard and at the top: fail when any row failed that the pack requires (the gate
 # refuses it, whatever its severity) or that carries severity blocking, else pass; "not applicable" only when every
@@ -26,15 +28,19 @@ def rollup:
     "pass"
   end;
 
-# the requirements of the pack (with their .NOTE rows), the ControlPlane proposals (CP-*) and the observe checks,
-# kept apart: only $checks counts in the rollup, and the gate reads only checks, so a proposal or an observe check
-# never changes the result
-(map(select((.requirement | startswith("CP-") | not) and (.requirement | IN($observe[]) | not)))) as $checks
-| (map(select(.requirement | startswith("CP-")))) as $proposals
-| (map(select(.requirement | IN($observe[])))) as $observe_checks
+# the place of a standard in the pack's order; a standard the pack does not name goes last
+def standard_rank:
+  . as $standard
+  | ($standards_order | index([$standard])) // ($standards_order | length);
 
-# one result per standard, the fitness page's view
-| ($checks | group_by(.standard) | map({standard: .[0].standard, standard_version: .[0].standard_version, result: rollup})) as $standards
+# the checks of the standards, in the pack's order then by id, and the checks of ours, by id: only osera_checks
+# counts in the rollup, so a check of ours never changes the result
+(map(select(.id | startswith("CP-") | not)) | sort_by([(.standard | standard_rank), .id])) as $osera_checks
+| (map(select(.id | startswith("CP-"))) | sort_by(.id)) as $extra_checks
+
+# one result per standard the pack includes, the fitness page's view; the observe standards are run and reported
+# in osera_checks, and never summarised as a standard that passed
+| ($osera_checks | map(select(.standard | IN($included[]))) | group_by(.standard) | map({standard: .[0].standard, standard_version: .[0].standard_version, result: rollup})) as $standards
 
 | {
     schema: schema,
@@ -57,11 +63,9 @@ def rollup:
         upload_account: null
       }
     },
-    result: ($checks | rollup),
+    result: ($osera_checks | rollup),
     signature: (if $rehearsal == "true" then "rehearsal, not signed: the gate never accepts this result" else "see the GitHub artifact attestation on this file" end),
     standards: $standards,
-    checks: $checks,
-    proposals: $proposals,
-    # the pack's observe_standards: run and reported, never in the rollup (the fitness page: observe checks do not block)
-    observe: $observe_checks
+    osera_checks: $osera_checks,
+    extra_checks: $extra_checks
   }

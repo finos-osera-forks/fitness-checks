@@ -1,5 +1,5 @@
 name: FORK-004.REQ-003 (observe)
-description: "FORK-004.REQ-003 (FORK-004 0.0.1): Patched-source repositories must be hosted in the appropriate official OSERA fork for the upstream project or artifact line. Observe only: kept out of the result, never fails the run"
+description: "FORK-004.REQ-003 (FORK-004 0.0.1): Patched-source repositories must be hosted in the appropriate official OSERA fork for the upstream project or artifact line. Observe only: reported, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
@@ -12,7 +12,7 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-004 0.0.1 FORK-004.REQ-003 FORK-004.CHECK-003
         OWNER="${OSERA_REPOSITORY%%/*}"
-        expect "repository $OSERA_REPOSITORY is in the organisation $OSERA_EXPECTED_ORG and is a GitHub fork of an upstream repository"
+        expect "owner $OSERA_EXPECTED_ORG and a GitHub fork of an upstream repository"
 
         # 1. the fork flag from the run context when GitHub set it
         if [ -n "$OSERA_IS_FORK" ]; then
@@ -24,17 +24,15 @@ runs:
         step "reading the fork relationship from the GitHub API"
         FORK="$(ev gh api "repos/$OSERA_REPOSITORY" --jq '"\(.fork) \(.parent.full_name // "none") \(.source.full_name // "none")"')"
         read -r IS_FORK PARENT SOURCE <<<"$FORK"
+        ROW="owner: $OWNER; fork: $IS_FORK; parent: $PARENT; root of the fork: $SOURCE"
 
-        # 3. the official organisation
+        # 3. the official organisation, and a GitHub fork of an upstream repository. The standard does not say yet
+        #    which upstream repository is the appropriate one for an artifact line, so the parent is recorded here,
+        #    not judged.
         if [ "$OWNER" != "$OSERA_EXPECTED_ORG" ]; then
-          record fail "repository is in $OWNER, not in the official organisation $OSERA_EXPECTED_ORG"
-          exit 0
-        fi
-
-        # 4. a GitHub fork of an upstream repository. The standard does not say yet which upstream repository is the
-        #    appropriate one for an artifact line, so the parent is recorded here, not judged.
-        if [ "$IS_FORK" != "true" ]; then
-          record fail "repository is in $OSERA_EXPECTED_ORG but is not a GitHub fork, it has no fork relationship to an upstream repository"
+          record fail "$ROW"
+        elif [ "$IS_FORK" != "true" ]; then
+          record fail "$ROW"
         else
-          record pass "repository is in $OSERA_EXPECTED_ORG and is a GitHub fork of $PARENT (root of the fork network: $SOURCE); whether that is the appropriate upstream repository is not defined by the standard yet"
+          record pass "$ROW"
         fi

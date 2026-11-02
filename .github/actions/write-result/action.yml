@@ -1,5 +1,5 @@
 name: write the fitness result
-description: "Collect the per requirement records into result.json: the fitness page's fields, one row per requirement in the gate's shape (id, result, severity, reason) with expected and the evidence, one result per standard, the ControlPlane proposals and the observe checks underneath, outside the rollup"
+description: "Collect the per requirement records into result.json: the fitness page's fields, the rows of the standards' checks in osera_checks (id, standard, its status in the pack, severity, result, expected, observed, evidence), the rows of our own checks in extra_checks (id, severity, result, expected, observed, evidence), one result per standard the pack includes"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (OSERA_TAG, OSERA_REPOSITORY, OSERA_PACK, OSERA_RESULTS_DIR, OSERA_LIBRARY, OSERA_APPROVED_PRODUCERS, OSERA_ACTOR). No inputs.
 outputs:
@@ -27,7 +27,7 @@ runs:
         # 1b. the producer's accounts, the fitness page's producer_accounts block (REL-004.REQ-002): the registry
         #     entry's staging_account and github_users copied as they are, the account that pushed the tag as observed,
         #     the upload account left null for the gate to fill. No entry, or no file: registry is null and the
-        #     REL-004 proposals below say so in their own records.
+        #     CP-REL-004 rows below say so in their own records.
         REGISTRY_ENTRY="null"
         if [ -n "$PRODUCER" ] && [ -f "$GITHUB_WORKSPACE/$OSERA_APPROVED_PRODUCERS" ]; then
           REGISTRY_ENTRY="$(P="$PRODUCER" yq -o=json -I=0 '[.producers[] | select(.id == env(P)) | {"staging_account": .staging_account, "github_users": .github_users}] | .[0] // null' "$GITHUB_WORKSPACE/$OSERA_APPROVED_PRODUCERS" 2>/dev/null || echo null)"
@@ -37,14 +37,13 @@ runs:
         fi
         TAG_ACTOR="${OSERA_ACTOR:-}"
 
-        # 2. exactly one record per expected requirement, plus at most one .NOTE row next to it: a missing record is
-        #    written as a fail row through the library (the check id and the severity looked up as for any row), an
-        #    unexpected one stops the run.
-        #    OBSERVE are the requirements of the pack's observe_standards: recorded apart from the rollup, so they never
-        #    change the result nor reach the checks the gate reads. REL-007 is not listed: the gate checks it at promotion.
-        OBSERVE="FORK-004.REQ-001 FORK-004.REQ-002 FORK-004.REQ-003 SRC-001.REQ-001 REL-006.REQ-001 REL-008.REQ-001 REL-008.REQ-002 EVD-001.REQ-001 APP-001.REQ-001"
-        REQUIREMENTS="FORK-001.REQ-001 FORK-001.REQ-002 FORK-002.REQ-001 FORK-003.REQ-001 SRC-002.REQ-001 SRC-002.REQ-002 SRC-003.REQ-001 REL-001.REQ-001 CP-REL-004-01 CP-REL-004-02 CP-REL-004-03 $OBSERVE"
-        OBSERVE_JSON="$(tr ' ' '\n' <<<"$OBSERVE" | jq -R . | jq -cs .)"
+        # 2. exactly one record per expected requirement, plus at most one row of ours (CP-NOTE-...) next to a check
+        #    whose SHOULD is not met: a missing record is written as a fail row through the library (the check id and
+        #    the severity looked up as for any row), an unexpected one stops the run. The observe requirements are the
+        #    pack's observe_standards: their rows sit in osera_checks with severity observe, and never change the result.
+        #    REL-007 is not listed: the gate checks it at promotion.
+        REQUIREMENTS="FORK-001.REQ-001 FORK-001.REQ-002 FORK-002.REQ-001 FORK-003.REQ-001 SRC-002.REQ-001 SRC-002.REQ-002 SRC-003.REQ-001 REL-001.REQ-001 CP-REL-004-01 CP-REL-004-02 CP-REL-004-03 FORK-004.REQ-001 FORK-004.REQ-002 FORK-004.REQ-003 SRC-001.REQ-001 REL-006.REQ-001 REL-008.REQ-001 REL-008.REQ-002 EVD-001.REQ-001 APP-001.REQ-001"
+        EXTRAS="CP-NOTE-001 CP-NOTE-002 CP-NOTE-003"
         for R in $REQUIREMENTS; do
           if [ -f "$OSERA_RESULTS_DIR/$R.json" ]; then
             continue
@@ -54,14 +53,13 @@ runs:
           C="$(check_id_of "$R")"
           check_is "$S" "$V" "$R" "$C"
           expect ""
-          record fail "the check did not run" || true
+          record fail "failed step: the action did not run" || true
         done
         trap - EXIT
         cd "$OSERA_RESULTS_DIR"
         for F in *.json; do
           NAME="${F%.json}"
-          NAME="${NAME%.note}"
-          if ! grep -qxF "$NAME" <<<"$(tr ' ' '\n' <<<"$REQUIREMENTS")"; then
+          if ! grep -qxF "$NAME" <<<"$(tr ' ' '\n' <<<"$REQUIREMENTS $EXTRAS")"; then
             echo "unexpected record $F"
             exit 1
           fi
@@ -76,18 +74,24 @@ runs:
           cp "$GITHUB_WORKSPACE/.osera/patch-evidence.yaml" "$OSERA_RESULTS_DIR/patch-evidence.yaml"
         fi
 
-        # 3b. the pack file's digest, so the result names exactly which pack it was checked against, and the check
-        #     ids the pack requires: a failed one makes the result fail whatever its severity, as it does at the gate
+        # 3b. the pack file's digest, so the result names exactly which pack it was checked against; the check ids
+        #     the pack requires (a failed one makes the result fail whatever its severity, as it does at the gate); the
+        #     standards the pack includes (summarised in standards); and the pack's order of standards (the order of
+        #     the rows)
         if [ -f "$GITHUB_WORKSPACE/$OSERA_PACK_FILE" ]; then
           PACK_CHECKSUM="sha256:$(sha256sum "$GITHUB_WORKSPACE/$OSERA_PACK_FILE" | cut -d' ' -f1)"
           REQUIRED_JSON="$(jq -c '[.standards.included_standards[].checks[]]' "$GITHUB_WORKSPACE/$OSERA_PACK_FILE")"
+          INCLUDED_JSON="$(jq -c '[.standards.included_standards[].id]' "$GITHUB_WORKSPACE/$OSERA_PACK_FILE")"
+          ORDER_JSON="$(jq -c '[.standards.included_standards[].id, .standards.observe_standards[].id]' "$GITHUB_WORKSPACE/$OSERA_PACK_FILE")"
         else
           PACK_CHECKSUM=""
           REQUIRED_JSON="[]"
+          INCLUDED_JSON="[]"
+          ORDER_JSON="[]"
         fi
 
-        # 4. the result: the page's fields, one result per standard, one row per requirement, the proposals,
-        #    the observe checks
+        # 4. the result: the page's fields, one result per standard, the rows of the standards' checks, the rows of
+        #    our own checks
         jq -s -f "$LIB/result.jq" \
            --arg pack "$OSERA_PACK" --arg repo "$OSERA_REPOSITORY" --arg release "$OSERA_TAG" \
            --arg commit "$COMMIT" --arg producer "$PRODUCER" --arg library "$OSERA_LIBRARY" --arg registry_ref "$OSERA_REGISTRY_REF" \
@@ -95,8 +99,9 @@ runs:
            --arg evidence_sha "$EVIDENCE_SHA" \
            --arg rehearsal "${OSERA_REHEARSAL:-false}" \
            --argjson registry_entry "$REGISTRY_ENTRY" --arg tag_actor "$TAG_ACTOR" \
-           --argjson observe "$OBSERVE_JSON" \
            --argjson required "$REQUIRED_JSON" \
+           --argjson included "$INCLUDED_JSON" \
+           --argjson standards_order "$ORDER_JSON" \
            ./*.json > result.json
 
         echo "result=$(jq -r .result result.json)" >> "$GITHUB_OUTPUT"

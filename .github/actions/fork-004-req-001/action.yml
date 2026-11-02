@@ -1,5 +1,5 @@
 name: FORK-004.REQ-001 (observe)
-description: "FORK-004.REQ-001 (FORK-004 0.0.1): Patched-source repositories must be fully public and publicly fetchable without private credentials. Observe only: kept out of the result, never fails the run"
+description: "FORK-004.REQ-001 (FORK-004 0.0.1): Patched-source repositories must be fully public and publicly fetchable without private credentials. Observe only: reported, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
@@ -12,10 +12,11 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-004 0.0.1 FORK-004.REQ-001 FORK-004.CHECK-001
         URL="https://github.com/${OSERA_REPOSITORY}.git"
-        expect "the release tag $OSERA_TAG can be fetched from $URL without credentials, and it names the commit this run checked out"
 
         # 1. the commit the tag names in the checkout
         REL_SHA="$(ev git rev-parse "refs/tags/${OSERA_TAG}^{commit}")"
+        expect "$OSERA_TAG at $REL_SHA, fetched without a login"
+        ROW="address: $URL; login: none"
 
         # 2. the tag read from the public address with no credentials: no token in the environment,
         #    no credential helper, no prompt. A private repository answers with an authentication error.
@@ -23,13 +24,13 @@ runs:
         RC=0
         LISTED="$(ev env -u GH_TOKEN -u GITHUB_TOKEN GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "$URL" "refs/tags/${OSERA_TAG}" "refs/tags/${OSERA_TAG}^{}")" || RC=$?
         if [ "$RC" -ne 0 ]; then
-          record fail "$URL could not be read without credentials (git ls-remote exit $RC)"
+          record fail "$ROW; git ls-remote exit: $RC"
           exit 0
         fi
 
         # 3. the tag must be there (a rehearsal pushes no tag, so the tag is missing in a rehearsal)
         if [ -z "$LISTED" ]; then
-          record fail "$URL answers without credentials, but has no tag $OSERA_TAG"
+          record fail "$ROW; tag: absent"
           exit 0
         fi
 
@@ -38,7 +39,7 @@ runs:
         PLAIN="$(awk -v t="refs/tags/${OSERA_TAG}" '$2 == t {print $1}' <<<"$LISTED")"
         PUBLIC_SHA="${PEELED:-$PLAIN}"
         if [ "$PUBLIC_SHA" = "$REL_SHA" ]; then
-          record pass "$URL serves $OSERA_TAG at $REL_SHA without credentials"
+          record pass "$ROW; tag: $OSERA_TAG; commit: $PUBLIC_SHA"
         else
-          record fail "$URL serves $OSERA_TAG at $PUBLIC_SHA without credentials, this run checked out $REL_SHA"
+          record fail "$ROW; tag: $OSERA_TAG; commit: $PUBLIC_SHA"
         fi
