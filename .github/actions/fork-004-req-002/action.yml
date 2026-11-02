@@ -1,5 +1,5 @@
 name: FORK-004.REQ-002 (observe)
-description: "FORK-004.REQ-002 (FORK-004 0.0.1): Patched-source repositories must preserve applicable upstream open-source license files and notices and release patched source under the same applicable license terms as the original source line. Observe only: kept out of the result, never fails the run"
+description: "FORK-004.REQ-002 (FORK-004 0.0.1): Patched-source repositories must preserve applicable upstream open-source license files and notices and release patched source under the same applicable license terms as the original source line. Observe only: reported, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
@@ -11,14 +11,14 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-004 0.0.1 FORK-004.REQ-002 FORK-004.CHECK-002
-        expect "every licence and notice file of the upstream source at $BASE is still at $OSERA_TAG, at the same path, with the same content"
+        expect "each licence and notice file at $BASE is the same at $OSERA_TAG"
 
         # Our proposal, the standard names no file pattern: a licence or notice file is one whose name, in any case and
         # in any directory, is LICENSE, LICENCE, NOTICE, COPYING or COPYRIGHT, optionally followed by a dash or underscore
         # part (LICENSE-APACHE, LICENSE-2.0) and by .txt, .md, .adoc, .rst or .html. License.java is not one.
         PATTERN='(^|/)(licen[cs]e|notice|copying|copyright)([-_][a-z0-9]+(\.[0-9]+)*)?(\.(txt|md|adoc|rst|html))?$'
 
-        # 1. without the baseline tag there is no upstream source to compare with: the check stops and is recorded as fail (could not run)
+        # 1. without the baseline tag there is no upstream source to compare with: the check stops and is recorded as fail (failed step)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -29,23 +29,29 @@ runs:
         CANDIDATES="$(ev git diff --name-only "$EMPTY_TREE" "$BASE" -- ':(glob,icase)**/licen[cs]e*' ':(glob,icase)**/notice*' ':(glob,icase)**/copying*' ':(glob,icase)**/copyright*')"
         UPSTREAM="$(grep -iE "$PATTERN" <<<"$CANDIDATES" || true)"
         if [ -z "$UPSTREAM" ]; then
-          record "not applicable" "no licence or notice file at $BASE, nothing to preserve"
+          record "not applicable" "files at the baseline: 0"
           exit 0
         fi
 
-        # 3. the same files at the release tag: deleted or changed ones are listed by git
+        # 3. the same files at the release tag: deleted (D) or changed (M) ones are listed by git
         FILES=()
         while IFS= read -r P; do
           FILES+=("$P")
         done <<<"$UPSTREAM"
         step "comparing the licence and notice files between $BASE and $OSERA_TAG"
         CHANGED="$(ev git diff --name-status "$BASE" "$OSERA_TAG" -- "${FILES[@]}")"
+        CHANGED_NAMES="$(awk -F'\t' '{print $2}' <<<"$CHANGED" | grep -v '^$' || true)"
+        CHANGED_WORDS="$(awk -F'\t' '$1 == "D" {print $2 " removed"} $1 != "D" {print $2 " changed"}' <<<"$CHANGED" | grep -v '^ ' || true)"
+        SAME="$(grep -vxF -f <(printf '%s\n' "$CHANGED_NAMES") <<<"$UPSTREAM" || true)"
+        if [ -z "$CHANGED_NAMES" ]; then
+          SAME="$UPSTREAM"
+        fi
 
-        # 4. the verdict: every file unchanged, or the ones that were deleted (D) or modified (M)
+        # 4. the verdict: every file unchanged, or some deleted or changed
         N="${#FILES[@]}"
-        LIST="$(paste -sd, - <<<"$UPSTREAM")"
+        ROW="files at the baseline: $N; the same at the tag: $(counted "$SAME"); changed or removed: $(counted "$CHANGED_WORDS")"
         if [ -z "$CHANGED" ]; then
-          record pass "$N licence and notice file(s) at $BASE, all unchanged at $OSERA_TAG: $LIST. Whether every patched source file stays under those terms is not checked here"
+          record pass "$ROW"
         else
-          record fail "licence or notice file(s) of $BASE deleted (D) or changed (M) at $OSERA_TAG: $(tr "\t" " " <<<"$CHANGED" | paste -sd, -); upstream files: $LIST"
+          record fail "$ROW"
         fi

@@ -12,7 +12,7 @@ runs:
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-003 0.1.0 SRC-003.REQ-001 SRC-003.CHECK-001
         PLUMBING='^(\.osera/|\.github/workflows/osera-fitness\.ya?ml$)'
-        expect "every source or test file added between $BASE and $OSERA_TAG, of any type, carries the licence header of the nearest existing file of the same type and kind in the same module (years, whitespace and comment marks ignored); the OSERA files under .osera/ and the fitness workflow are not the patched source"
+        expect "each new source or test file has the licence header of the nearest existing file of its type in its module"
 
         # the leading comment of a file at a revision, in the four styles a licence header takes (Francesco, 19 Oct
         # 2026): a /* */ block, an XML <!-- --> block, lines starting with //, lines starting with #. Blank lines, an
@@ -43,8 +43,12 @@ runs:
         # the kind of a file: test or main
         kind() {
           case "$1" in
-            */test/*) echo test ;;
-            *)        echo main ;;
+            */test/*)
+              echo test
+              ;;
+            *)
+              echo main
+              ;;
           esac
         }
 
@@ -54,9 +58,15 @@ runs:
           D="$(dirname "$P")"
           while [ "$D" != "." ] && [ "$D" != "/" ]; do
             while IFS= read -r F; do
-              if [ -z "$F" ]; then continue; fi
-              if [ "${F##*.}" != "${P##*.}" ]; then continue; fi
-              if [ "$(kind "$F")" != "$(kind "$P")" ]; then continue; fi
+              if [ -z "$F" ]; then
+                continue
+              fi
+              if [ "${F##*.}" != "${P##*.}" ]; then
+                continue
+              fi
+              if [ "$(kind "$F")" != "$(kind "$P")" ]; then
+                continue
+              fi
               echo "$F"
               return
             done < <(git ls-tree -r --name-only "$BASE" -- "$D")
@@ -64,7 +74,7 @@ runs:
           done
         }
 
-        # 1. without the baseline tag there is no list of new files: the check stops and is recorded as fail (could not run)
+        # 1. without the baseline tag there is no list of new files: the check stops and is recorded as fail (failed step)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -73,41 +83,51 @@ runs:
         ALL="$(ev git diff --name-only --diff-filter=A "$BASE" "$OSERA_TAG")"
         ADDED="$(grep -vE "$PLUMBING" <<<"$ALL" || true)"
         if [ -z "$ADDED" ]; then
-          record "not applicable" "no source or test file added between $BASE and $OSERA_TAG, beyond the OSERA files"
+          record "not applicable" "new files: 0"
           exit 0
         fi
 
-        # 3. each new file against the header of its nearest existing neighbour
-        CHECKED=0
-        PROBLEMS=""
-        LINES=""
+        # 3. each new file against the header of its nearest existing neighbour: the ones with the header, the ones
+        #    without it, and the ones with no neighbour or a neighbour without a header to compare with; the
+        #    comparisons go to the evidence
+        WITH=""
+        WITHOUT=""
+        UNCOMPARED=""
         while IFS= read -r P; do
-          if [ -z "$P" ]; then continue; fi
+          if [ -z "$P" ]; then
+            continue
+          fi
           N="$(nearest "$P")"
           if [ -z "$N" ]; then
-            LINES="$LINES; $P: no existing file of the same kind nearby"
+            UNCOMPARED+=$'\n'"$P"
+            given "nearest file of the same type and kind as $P at $BASE" "none"
             continue
           fi
           REF="$(header "$BASE" "$N")"
           if [ -z "$REF" ]; then
-            LINES="$LINES; $P: the neighbour $N has no header block"
+            UNCOMPARED+=$'\n'"$P"
+            given "header of $N at $BASE, the nearest file to $P" "none"
             continue
           fi
-          CHECKED=$((CHECKED + 1))
           if [ "$(header "$OSERA_TAG" "$P")" = "$REF" ]; then
-            LINES="$LINES; $P: header matches $N"
+            WITH+=$'\n'"$P"
+            given "header of $P at $OSERA_TAG against $N at $BASE" "same"
           else
-            PROBLEMS="$PROBLEMS $P"
-            LINES="$LINES; $P: header differs from $N"
+            WITHOUT+=$'\n'"$P"
+            given "header of $P at $OSERA_TAG against $N at $BASE" "different"
           fi
         done <<<"$ADDED"
 
         # 4. the verdict: nothing to compare against is not applicable, one difference is a fail
         N_ADDED="$(wc -l <<<"$ADDED" | tr -d ' ')"
-        if [ "$CHECKED" = 0 ]; then
-          record "not applicable" "$N_ADDED new file(s), no header convention to compare against${LINES}"
-        elif [ -n "$PROBLEMS" ]; then
-          record fail "header differs on:$PROBLEMS${LINES}"
+        ROW="new files: $N_ADDED; with the header: $(counted "$WITH"); without the header: $(counted "$WITHOUT")"
+        if [ -n "$UNCOMPARED" ]; then
+          ROW="$ROW; no header to compare with: $(counted "$UNCOMPARED")"
+        fi
+        if [ -z "$WITH" ] && [ -z "$WITHOUT" ]; then
+          record "not applicable" "$ROW"
+        elif [ -n "$WITHOUT" ]; then
+          record fail "$ROW"
         else
-          record pass "$CHECKED of $N_ADDED new file(s) compared, all carry the local header convention${LINES}"
+          record pass "$ROW"
         fi

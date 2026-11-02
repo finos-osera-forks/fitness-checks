@@ -11,7 +11,7 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is FORK-001 0.1.0 FORK-001.REQ-001 FORK-001.CHECK-001
-        expect "repository $OSERA_REPOSITORY is owned by the organisation $OSERA_EXPECTED_ORG"
+        expect "owner $OSERA_EXPECTED_ORG"
 
         # 1. who owns the repository: from the run context GitHub sets (the caller cannot write it),
         #    or from the API when the library tests a reference repository that is not the caller
@@ -19,7 +19,6 @@ runs:
           given github.repository_owner "$OSERA_OWNER"
           given github.repository_owner_id "$OSERA_OWNER_ID"
           OWNER="$OSERA_OWNER"
-          DETAIL="$OSERA_OWNER (id $OSERA_OWNER_ID), from the run context"
         else
           step "reading the repository owner from the GitHub API"
           DETAIL="$(ev gh api "repos/$OSERA_REPOSITORY" --jq '"\(.owner.login) (id \(.owner.id), \(.owner.type))"')"
@@ -28,7 +27,7 @@ runs:
 
         # 2. the owner must be the expected organisation
         if [ "$OWNER" = "$OSERA_EXPECTED_ORG" ]; then
-          record pass "owner is $DETAIL"
+          record pass "owner: $OWNER"
         else
-          record fail "owner is $DETAIL, not $OSERA_EXPECTED_ORG"
+          record fail "owner: $OWNER"
         fi

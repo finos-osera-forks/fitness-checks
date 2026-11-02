@@ -13,27 +13,36 @@ runs:
         check_is REL-001 0.1.0 REL-001.REQ-001 REL-001.CHECK-001
         F=.osera/patch-evidence.yaml
         PLUMBING='^(\.osera/patch-evidence\.yaml|\.github/workflows/osera-fitness\.ya?ml)$'
-        expect "$F has a tests block with commit, command, runtime, report and result pass; the tested commit is the tagged commit, or an earlier one with only the OSERA plumbing files changed after it"
+        expect "evidence file has the tests' commit, command, runtime and report"
 
         # 1. the evidence file must be in the repository at the tag
         step "reading $F"
         if [ ! -f "$F" ]; then
-          record fail "$F is not in the repository at $OSERA_TAG"
+          record fail "$F: absent"
           exit 1
         fi
 
         # 2. show the tests block as the producer wrote it
         ev yq '.tests // {}' "$F" >/dev/null
 
-        # 3. the five fields must be filled
+        # 3. the four fields of the row, absent when empty, and the result
         MISSING=""
-        for K in commit command runtime report result; do
-          if [ -z "$(yq -r ".tests.$K // \"\"" "$F")" ]; then
+        ROW=""
+        for K in commit command runtime report; do
+          V="$(yq -r ".tests.$K // \"\"" "$F")"
+          if [ -z "$V" ]; then
             MISSING="$MISSING $K"
+            V="absent"
           fi
+          ROW="$ROW; $K: $V"
         done
+        ROW="${ROW#; }"
+        RESULT="$(yq -r '.tests.result // ""' "$F" | tr '[:upper:]' '[:lower:]')"
+        if [ -z "$RESULT" ]; then
+          MISSING="$MISSING result"
+        fi
         if [ -n "$MISSING" ]; then
-          record fail "tests block missing:$MISSING"
+          record fail "$ROW; result: ${RESULT:-absent}"
           exit 1
         fi
 
@@ -42,35 +51,32 @@ runs:
         step "resolving tests.commit $TESTED"
         TESTED_SHA="$(ev git rev-parse -q --verify "${TESTED}^{commit}" || true)"
         if [ -z "$TESTED_SHA" ]; then
-          record fail "tests.commit $TESTED is not a commit of this repository"
+          record fail "$ROW; commit in the repository: no"
           exit 1
         fi
 
         # 5. the tested commit is the tagged commit, or an ancestor with only the evidence file and the caller workflow
-        #    changed after it (the producer tests, then commits those two files, then tags)
+        #    changed after it (the producer tests, then commits those two files, then tags); a failing row names the
+        #    files changed beyond them
         REL_SHA="$(ev git rev-parse "refs/tags/${OSERA_TAG}^{commit}")"
-        if [ "$TESTED_SHA" = "$REL_SHA" ]; then
-          WHERE="the tagged commit"
-        else
+        if [ "$TESTED_SHA" != "$REL_SHA" ]; then
           if ! ev git merge-base --is-ancestor "$TESTED_SHA" "$REL_SHA" >/dev/null; then
-            record fail "tests.commit $TESTED_SHA is not an ancestor of the tagged commit $REL_SHA"
+            record fail "$ROW; tested commit on the release history: no"
             exit 1
           fi
           CHANGED="$(ev git diff --name-only "$TESTED_SHA" "$REL_SHA")"
           EXTRA="$(grep -vE "$PLUMBING" <<<"$CHANGED" || true)"
           if [ -n "$EXTRA" ]; then
-            record fail "files changed after the tested commit $TESTED_SHA beyond the OSERA plumbing: $(paste -sd, - <<<"$EXTRA")"
+            record fail "$ROW; files changed after the tested commit: $(counted "$EXTRA")"
             exit 1
           fi
-          N="$(ev git rev-list --count "$TESTED_SHA..$REL_SHA")"
-          WHERE="$N commit(s) before the tag, only the OSERA plumbing files changed after it"
+          ev git rev-list --count "$TESTED_SHA..$REL_SHA" >/dev/null
         fi
 
-        # 6. the result must be pass
-        RESULT="$(yq -r .tests.result "$F" | tr '[:upper:]' '[:lower:]')"
+        # 6. the result must be pass; a failing row names the result
         if [ "$RESULT" != pass ]; then
-          record fail "tests.result is $RESULT, not pass"
+          record fail "$ROW; result: $RESULT"
           exit 1
         fi
 
-        record pass "tests ran on ${TESTED_SHA:0:12} ($WHERE): $(yq -r .tests.command "$F") on $(yq -r .tests.runtime "$F"), report $(yq -r .tests.report "$F"), result pass; the gate reads the report next to the artifact, and its findings there are advisory"
+        record pass "$ROW"

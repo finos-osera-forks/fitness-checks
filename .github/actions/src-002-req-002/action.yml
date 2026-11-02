@@ -11,9 +11,9 @@ runs:
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is SRC-002 0.1.0 SRC-002.REQ-002 SRC-002.CHECK-002
-        expect "every commit between $BASE and $OSERA_TAG whose message names an upstream commit (cherry picked from, backport of, upstream commit, an Upstream-Commit trailer) carries a Co-authored-by trailer naming the upstream author"
+        expect "each commit naming an upstream commit has a Co-authored-by trailer"
 
-        # 1. without the baseline tag there is no range to look at: the check stops and is recorded as fail (could not run)
+        # 1. without the baseline tag there is no range to look at: the check stops and is recorded as fail (failed step)
         step "resolving the baseline tag $BASE"
         ev git rev-parse -q --verify "refs/tags/${BASE}^{commit}" >/dev/null
 
@@ -23,21 +23,28 @@ runs:
         TOTAL="$(ev git rev-list --count "${BASE}..${OSERA_TAG}")"
         CARRYING="$(ev git log --format=%H "${BASE}..${OSERA_TAG}" -i --extended-regexp --grep='(cherry picked from commit|backport of|upstream commit|upstream-commit:|upstream:) *[0-9a-f]{7,40}')"
         if [ -z "$CARRYING" ]; then
-          record "not applicable" "$TOTAL commit(s) between $BASE and $OSERA_TAG, none names an upstream commit"
+          record "not applicable" "commits: $TOTAL; naming an upstream commit: 0"
           exit 0
         fi
+        NAMING="$(wc -l <<<"$CARRYING" | tr -d ' ')"
 
         # 3. each of those must carry a Co-authored-by trailer with a value (a SHOULD: the standard makes this check
         #    advisory, so a fail here never changes the result nor blocks at the gate)
-        MISSING=""
+        WITH=""
+        WITHOUT=""
         for C in $CARRYING; do
           MSG="$(ev git log -1 --format=%B "$C")"
-          if ! grep -qE '^Co-authored-by: *[^ ]' <<<"$MSG"; then
-            MISSING="$MISSING ${C:0:12}"
+          if grep -qE '^Co-authored-by: *[^ ]' <<<"$MSG"; then
+            WITH+=$'\n'"${C:0:12}"
+          else
+            WITHOUT+=$'\n'"${C:0:12}"
           fi
         done
-        if [ -n "$MISSING" ]; then
-          record fail "commit(s) naming an upstream commit without a Co-authored-by trailer:$MISSING"
+
+        # 4. the verdict
+        ROW="commits: $TOTAL; naming an upstream commit: $NAMING; with the trailer: $(counted "$WITH"); without the trailer: $(counted "$WITHOUT")"
+        if [ -n "$WITHOUT" ]; then
+          record fail "$ROW"
         else
-          record pass "$(wc -l <<<"$CARRYING" | tr -d ' ') commit(s) name an upstream commit and carry a Co-authored-by trailer"
+          record pass "$ROW"
         fi

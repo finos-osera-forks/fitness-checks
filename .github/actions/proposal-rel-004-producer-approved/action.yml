@@ -1,38 +1,42 @@
-name: CP-REL-004-02 (proposal)
-description: "CP-REL-004-02 (REL-004 0.1.0): ControlPlane proposal (remediation-standards 52): the producer named in the evidence file is in the approved producers. Advisory, never fails the run"
+name: CP-REL-004-02
+description: "CP-REL-004-02 (REL-004 0.1.0): a check of ours (remediation-standards 52): the producer named in the evidence file is in the approved producers. Advisory, never fails the run"
 author: ControlPlane for the FINOS OSERA Exchange
 # Reads the job environment set by the fitness workflow (see lib/record.sh for the list of OSERA_* variables). No inputs.
 runs:
   using: composite
   steps:
-    - name: CP-REL-004-02 (proposal)
+    - name: CP-REL-004-02
       shell: bash
       run: |
         set -euo pipefail
         source "$GITHUB_ACTION_PATH/../../../lib/record.sh"
         check_is REL-004 0.1.0 CP-REL-004-02 ""
         F=.osera/patch-evidence.yaml
-        expect "the producer named in $F has an entry in the approved producers file for pack $OSERA_PACK"
 
-        # 1. the evidence file and the producer it names (a proposal: a fail is advisory, never the run's)
+        # 1. the evidence file and the producer it names (a check of ours: a fail is advisory, never the run's)
         step "reading $F and the approved producers file"
         if [ ! -f "$F" ]; then
-          record fail "$F is not in the repository at $OSERA_TAG"
+          expect "the producer is in the approved producers file"
+          record fail "$F: absent"
           exit 0
         fi
         P="$(ev yq -r '.producer // ""' "$F")"
+        expect "${P:-the producer} is in the approved producers file"
 
         # 2. the approved producers file must be for this pack
         PACK="$(ev yq -r '.applies_to_pack // ""' "$OSERA_APPROVED_PRODUCERS")"
         IDS="$(ev yq -r '.producers[].id' "$OSERA_APPROVED_PRODUCERS")"
+        N="$(wc -l <<<"$IDS" | tr -d ' ')"
         if [ "$PACK" != "$OSERA_PACK" ]; then
-          record fail "the approved producers file applies to '$PACK', not $OSERA_PACK"
+          record fail "applies to pack: ${PACK:-absent}; entries: $N; ${P:-producer}: absent"
           exit 0
         fi
 
         # 3. the producer id must be one of the entries
-        if grep -qxF "$P" <<<"$IDS"; then
-          record pass "producer '$P' has an entry ($(wc -l <<<"$IDS" | tr -d ' ') entries in the file)"
+        if [ -z "$P" ]; then
+          record fail "entries: $N; producer: absent"
+        elif grep -qxF "$P" <<<"$IDS"; then
+          record pass "entries: $N; $P: present"
         else
-          record fail "producer '$P' has no entry; ids present: $(paste -sd, - <<<"$IDS")"
+          record fail "entries: $N; $P: absent"
         fi

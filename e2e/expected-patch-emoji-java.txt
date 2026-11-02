@@ -2,19 +2,19 @@ FORK-001.CHECK-001 fail blocking
 FORK-001.CHECK-002 pass blocking
 FORK-002.CHECK-001 fail blocking
 FORK-003.CHECK-001 fail blocking
-REL-001.CHECK-001 fail blocking
 SRC-002.CHECK-001 fail blocking
 SRC-002.CHECK-002 not applicable advisory
 SRC-003.CHECK-001 not applicable blocking
-CP-REL-004-01 pass advisory
-CP-REL-004-02 fail advisory
-CP-REL-004-03 fail advisory
-APP-001.CHECK-001 fail observe
-EVD-001.CHECK-001 fail observe
+REL-001.CHECK-001 fail blocking
 FORK-004.CHECK-001 pass observe
 FORK-004.CHECK-002 pass observe
 FORK-004.CHECK-003 fail observe
+SRC-001.CHECK-001 fail observe
 REL-006.CHECK-001 fail observe
 REL-008.CHECK-001 fail observe
 REL-008.CHECK-002 fail observe
-SRC-001.CHECK-001 fail observe
+EVD-001.CHECK-001 fail observe
+APP-001.CHECK-001 fail observe
+CP-REL-004-01 pass advisory
+CP-REL-004-02 fail advisory
+CP-REL-004-03 fail advisory

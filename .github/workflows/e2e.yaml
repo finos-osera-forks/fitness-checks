@@ -56,7 +56,7 @@ jobs:
         run: |
           failed=0
           for ref in patch-jfiglet patch-emoji-java; do
-            jq -r '(.checks + .proposals + .observe)[] | "\(.id) \(.result) \(.severity)"' "osera-fitness-result-$ref/result.json" > "actual-$ref.txt"
+            jq -r '(.osera_checks + .extra_checks)[] | "\(.id) \(.result) \(.severity)"' "osera-fitness-result-$ref/result.json" > "actual-$ref.txt"
             if diff "e2e/expected-$ref.txt" "actual-$ref.txt"; then
               echo "e2e $ref: every row as expected"
             else

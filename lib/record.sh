@@ -10,22 +10,27 @@
 #
 # A check reads like this:
 #   check_is <standard> <version> <requirement> <check id or empty>   names the check; one record per requirement
-#   expect "<the rule in words, with the actual values in it>" what a pass needs
-#   step "<what is being done>"                             named so that a crash reads as "could not run: <step> failed"
+#   expect "<what a pass needs, with the actual values in it>"
+#   step "<what is being done>"                             named so that a crash reads as "failed step: <step>"
 #   ev <command...>                                         runs the command, keeps the command line (quoted so it can be
 #                                                           pasted into a shell), exit code and output as evidence, prints
 #                                                           the output, returns the command's exit code
 #   given <github context name> <value>                     keeps a value GitHub set in the run context as evidence
-#   note "<what the standard says should be otherwise>"     a second row, <check id>.NOTE, fail advisory: a SHOULD of the
-#                                                           standard not met while the MUST is; the gate never requires it
-#   record <result> "<reason>"                              writes the row and returns failure when a check the pack
+#   record <result> "<observed>"                            writes the row and returns failure when a check the pack
 #                                                           requires failed, whatever its severity (the gate's rule)
+#   extra <id> <result> "<expected>" "<observed>"           a row of ours (CP-...) next to the check's, in extra_checks,
+#                                                           severity advisory: a SHOULD of the standard not met while the
+#                                                           MUST is; the gate never requires it
 #
-# The row is the gate's shape (the verdict's checks rows): id, result, severity, reason, expected, evidence, and the
-# standard, standard_version, check_version and requirement the gate compares with the pack. The result is one of three
+# expected and observed are facts, every fact "name: value", facts separated by "; ", lists by ", ", a counted list
+# "4 (a, b, c, d)", an empty list "none", a field that is not there "absent". No other words.
+#
+# Two row shapes (Francesco, 30 Oct 2026). A check of the standards, in osera_checks: id, standard, standard_version,
+# doc_status, ratified_in, ratified_date, candidate_pack, fitness_role, severity, result, expected, observed, evidence.
+# A check of ours, in extra_checks: id, severity, result, expected, observed, evidence. The result is one of three
 # words, pass, fail or "not applicable"; nothing else is ever written. The severity is the check's own: observe for a
 # check of the pack's observe standards, else what the standard's front matter says (blocking, advisory or observe);
-# a proposal has no standard, so it is advisory. A check that dies before recording is written as fail.
+# a check of ours has no standard, so it is advisory. A check that dies before recording is written as fail.
 
 : "${OSERA_TAG:?OSERA_TAG is required}"
 : "${OSERA_REPOSITORY:?OSERA_REPOSITORY is required}"
@@ -130,6 +135,47 @@ standard_file_of() {
   printf '%s' "$file"
 }
 
+# the file of the standards checkout that is the given standard (its standard_id line). Empty when the checkout or
+# the standard is not there.
+standard_doc_of() {
+  local standard="$1" file=""
+  if [ ! -d "$OSERA_STANDARDS_DIR" ]; then
+    printf ''
+    return 0
+  fi
+  file="$(grep -l -E "^standard_id:[[:space:]]+${standard}[[:space:]]*$" "$OSERA_STANDARDS_DIR"/*.md 2>/dev/null | head -n 1 || true)"
+  printf '%s' "$file"
+}
+
+# the status of a standard, five values separated by tabs: doc_status, ratified_in, ratified_date, candidate_pack,
+# fitness_role. For a standard the pack includes, the pack is the source: the pack ratified it, at the version the
+# pack names, in the role the pack gives it; its file on the standards' main branch may have moved on since
+# (REL-001 is a Draft 0.2.0 there while OSERA-SP-0.1.0 ratified 0.1.0). For a standard of the pack's observe
+# standards, the values are the front matter of its file at the standards ref. Five empty values when neither says.
+status_of() {
+  local standard="$1" role="" pack_id="" pack_date="" file=""
+  # 1. no pack file: nothing to say
+  if [ ! -f "$OSERA_PACK_FILE" ]; then
+    printf '\t\t\t\t'
+    return 0
+  fi
+  # 2. a standard the pack includes: ratified in this pack
+  role="$(jq -r --arg s "$standard" '[.standards.included_standards[] | select(.id == $s) | .role] | first // ""' "$OSERA_PACK_FILE")"
+  if [ -n "$role" ]; then
+    pack_id="$(jq -r '.pack.id // ""' "$OSERA_PACK_FILE")"
+    pack_date="$(jq -r '.pack.ratified_date // ""' "$OSERA_PACK_FILE")"
+    printf 'Ratified\t%s\t%s\t%s ratified\t%s' "$pack_id" "$pack_date" "$pack_id" "$role"
+    return 0
+  fi
+  # 3. an observe standard: its own file at the standards ref
+  file="$(standard_doc_of "$standard")"
+  if [ -z "$file" ]; then
+    printf '\t\t\t\t'
+    return 0
+  fi
+  yq --front-matter=extract -r '[."doc-status", ."ratified-in", ."ratified-date", ."candidate-pack", ."fitness-role"] | map(. // "" | tostring) | join("\t")' "$file"
+}
+
 # the severity of a check: observe when the pack lists the check under its observe standards, else the severity the
 # standard's front matter gives the check (blocking, advisory or observe); empty when neither names it
 severity_of() {
@@ -162,7 +208,7 @@ pack_requires() {
 # whether a fail of the current check stops the action and makes the run red: the check has an id and the pack
 # requires it, or the pack file is not there to say. The severity never decides this: it comes from the standards'
 # main branch, which is not pinned, and the gate refuses a failed required check whatever the severity says
-# (Francesco, 30 Oct 2026). A proposal has no check id and is never required.
+# (Francesco, 30 Oct 2026). A check of ours has no check id and is never required.
 required_check() {
   if [ -z "$CHECK_ID" ]; then
     return 1
@@ -174,11 +220,11 @@ required_check() {
 }
 
 # the check id of a requirement, from the standard's front matter (the first check listed under it). Empty when the
-# requirement is not found, and for a proposal (CP-*), which has no check id: record then names the row by the
-# requirement, as the proposal actions do.
+# requirement is not found, and for a check of ours (CP-*), which has no check id: record then names the row by the
+# requirement, as the CP-REL-004 actions do.
 check_id_of() {
   local req="$1" file=""
-  # 1. a proposal
+  # 1. a check of ours
   case "$req" in
     CP-*)
       printf ''
@@ -233,40 +279,87 @@ given() {
   jq -cn --arg context "$1" --arg value "$2" '{context: $context, value: $value}' >> "$EVFILE"
 }
 
-# write_row <id> <result> <severity> <reason> <standard version> <file>: one row in the gate's shape, with the
-# expected text and the evidence gathered so far
-write_row() {
-  local id="$1" result="$2" severity="$3" reason="$4" standard_version="$5" file="$6"
-  jq -n --arg id "$id" --arg result "$result" --arg severity "$severity" --arg reason "$reason" \
-        --arg expected "$EXPECTED" --slurpfile evidence "$EVFILE" \
-        --arg standard "$CHECK_STD" --arg standard_version "$standard_version" --arg check_version "$CHECK_VERSION" \
-        --arg requirement "$CHECK_REQ" \
-        '{id: $id, result: $result, severity: $severity, reason: $reason,
-          expected: $expected, evidence: $evidence,
-          standard: $standard, standard_version: $standard_version, check_version: $check_version,
-          requirement: $requirement}' > "$file"
-}
-
-# note "<reason>": a second row next to the check's, id <check id>.NOTE, result fail, severity advisory. For a SHOULD
-# of the standard that is not met while the MUST is: the check passes, the note says what should be otherwise, and
-# the release is promoted (Francesco, 30 Oct 2026). The gate requires no .NOTE id, so it never blocks.
-note() {
-  local reason="$1" pack_version
-  pack_version="$(pack_version_of "$CHECK_STD")"
-  if [ -z "$pack_version" ]; then
-    pack_version="$CHECK_VERSION"
+# counted <list, one item per line> [separator]: a counted list, "4 (a, b, c, d)", or "none" when the list is empty.
+# The separator is ", " unless the items carry commas themselves, then the caller passes "; "
+counted() {
+  local list="$1" separator="${2:-, }" n
+  list="$(grep -v '^$' <<<"$list" || true)"
+  if [ -z "$list" ]; then
+    printf 'none'
+    return 0
   fi
-  write_row "$CHECK_ID.NOTE" fail advisory "$reason" "$pack_version" "$OSERA_RESULTS_DIR/$CHECK_REQ.note.json"
-  echo "$CHECK_REQ note (fail advisory): $reason"
+  n="$(wc -l <<<"$list" | tr -d ' ')"
+  printf '%s (%s)' "$n" "$(awk -v sep="$separator" 'NR > 1 {printf "%s", sep} {printf "%s", $0}' <<<"$list")"
 }
 
-# record <result> "<reason>": the check's row. The result is pass, fail or "not applicable"; the severity is looked
+# listed <list, one item per line>: a plain list, "a, b", or "none" when the list is empty
+listed() {
+  local list="$1"
+  list="$(grep -v '^$' <<<"$list" || true)"
+  if [ -z "$list" ]; then
+    printf 'none'
+    return 0
+  fi
+  paste -sd, - <<<"$list" | sed 's/,/, /g'
+}
+
+# write_osera_row <id> <result> <severity> <expected> <observed> <standard version> <file>: one row of osera_checks,
+# with the standard's status fields and the evidence gathered so far
+write_osera_row() {
+  local id="$1" result="$2" severity="$3" expected="$4" observed="$5" standard_version="$6" file="$7"
+  local doc_status ratified_in ratified_date candidate_pack fitness_role
+  IFS=$'\t' read -r doc_status ratified_in ratified_date candidate_pack fitness_role <<<"$(status_of "$CHECK_STD")"
+  jq -n --arg id "$id" --arg result "$result" --arg severity "$severity" \
+        --arg expected "$expected" --arg observed "$observed" --slurpfile evidence "$EVFILE" \
+        --arg standard "$CHECK_STD" --arg standard_version "$standard_version" \
+        --arg doc_status "${doc_status:-}" --arg ratified_in "${ratified_in:-}" --arg ratified_date "${ratified_date:-}" \
+        --arg candidate_pack "${candidate_pack:-}" --arg fitness_role "${fitness_role:-}" \
+        '{id: $id,
+          standard: $standard,
+          standard_version: $standard_version,
+          doc_status: (if $doc_status == "" then null else $doc_status end),
+          ratified_in: (if $ratified_in == "" then null else $ratified_in end),
+          ratified_date: (if $ratified_date == "" then null else $ratified_date end),
+          candidate_pack: (if $candidate_pack == "" then null else $candidate_pack end),
+          fitness_role: (if $fitness_role == "" then null else $fitness_role end),
+          severity: $severity,
+          result: $result,
+          expected: $expected,
+          observed: $observed,
+          evidence: $evidence}' > "$file"
+}
+
+# write_extra_row <id> <result> <expected> <observed> <file>: one row of extra_checks, a check of ours, severity
+# advisory, with the evidence gathered so far
+write_extra_row() {
+  local id="$1" result="$2" expected="$3" observed="$4" file="$5"
+  jq -n --arg id "$id" --arg result "$result" \
+        --arg expected "$expected" --arg observed "$observed" --slurpfile evidence "$EVFILE" \
+        '{id: $id,
+          severity: "advisory",
+          result: $result,
+          expected: $expected,
+          observed: $observed,
+          evidence: $evidence}' > "$file"
+}
+
+# extra <id> <result> "<expected>" "<observed>": a row of ours next to the check's, in extra_checks, severity
+# advisory. For a SHOULD of the standard that is not met while the MUST is (CP-NOTE-001, CP-NOTE-002, CP-NOTE-003):
+# the check passes, the extra row says what the standard says should be otherwise, and the release is promoted
+# (Francesco, 30 Oct 2026). The gate requires no CP- id, so it never blocks.
+extra() {
+  local id="$1" result="$2" expected="$3" observed="$4"
+  write_extra_row "$id" "$result" "$expected" "$observed" "$OSERA_RESULTS_DIR/$id.json"
+  echo "$id $result (advisory): $observed"
+}
+
+# record <result> "<observed>": the check's row. The result is pass, fail or "not applicable"; the severity is looked
 # up here, for display. Returns failure for a fail of a check the pack requires (required_check), whatever the
 # severity, so the action stops there under set -e and the step is red exactly when the gate would refuse; a fail of
-# a proposal, an advisory or an observe check returns success and the action goes on.
+# a check of ours, an advisory or an observe check returns success and the action goes on.
 record() {
-  local result="$1" reason="$2" pack_version id severity file
-  # 1. only the three words of the gate's shape
+  local result="$1" observed="$2" pack_version id severity file
+  # 1. only the three words of the row shape
   case "$result" in
     pass|fail|"not applicable")
       ;;
@@ -279,45 +372,44 @@ record() {
   #     the actions, which stop or exit after a fail themselves)
   file="$OSERA_RESULTS_DIR/$CHECK_REQ.json"
   if [ -f "$file" ] && [ "$(jq -r .result "$file")" = fail ]; then
-    echo "$CHECK_REQ keeps its fail row, not overwritten by $result: $reason"
+    echo "$CHECK_REQ keeps its fail row, not overwritten by $result: $observed"
     if required_check; then
       return 1
     fi
     return 0
   fi
-  # 2. the version the pack names for this standard, against the version this check implements
+  # 2. the version the pack names for this standard, against the version this check implements: a difference is a
+  #    fail, and observed says both versions
   pack_version="$(pack_version_of "$CHECK_STD")"
   if [ -z "$pack_version" ]; then
     result=fail
-    reason="the pack file $OSERA_PACK_FILE does not name $CHECK_STD, the check (written for $CHECK_STD $CHECK_VERSION) was not counted"
+    observed="$observed; check version: $CHECK_VERSION; pack version: absent"
     pack_version="$CHECK_VERSION"
   elif [ "$pack_version" != "$CHECK_VERSION" ]; then
     result=fail
-    reason="the check implements $CHECK_STD $CHECK_VERSION, the pack $OSERA_PACK names $CHECK_STD $pack_version, the check was not counted"
+    observed="$observed; check version: $CHECK_VERSION; pack version: $pack_version"
   fi
-  # 3. the id: the check's, or the requirement's for a proposal, which has no check id
-  id="$CHECK_ID"
-  if [ -z "$id" ]; then
-    id="$CHECK_REQ"
-  fi
-  # 4. the severity: advisory for a proposal (no standard, and a check we invented is advisory); the check's own
-  #    otherwise; when none is found the reason says so, and a check the pack requires is taken as blocking
+  # 3. a check of ours (no check id): a row of extra_checks, named by the requirement, severity advisory
   if [ -z "$CHECK_ID" ]; then
-    severity=advisory
-  else
-    severity="$(severity_of "$CHECK_ID")"
-    if [ -z "$severity" ]; then
-      if pack_requires "$CHECK_ID"; then
-        severity=blocking
-      else
-        severity=advisory
-      fi
-      reason="$reason; no severity found for $CHECK_ID in $OSERA_STANDARDS_DIR nor in the observe standards of $OSERA_PACK_FILE, taken as $severity"
+    write_extra_row "$CHECK_REQ" "$result" "$EXPECTED" "$observed" "$file"
+    echo "$CHECK_REQ $result (advisory): $observed"
+    return 0
+  fi
+  # 4. the severity: the check's own; when none is found the log says so, and a check the pack requires is taken
+  #    as blocking
+  id="$CHECK_ID"
+  severity="$(severity_of "$CHECK_ID")"
+  if [ -z "$severity" ]; then
+    if pack_requires "$CHECK_ID"; then
+      severity=blocking
+    else
+      severity=advisory
     fi
+    echo "no severity found for $CHECK_ID in $OSERA_STANDARDS_DIR nor in the observe standards of $OSERA_PACK_FILE, taken as $severity"
   fi
   # 5. the row
-  write_row "$id" "$result" "$severity" "$reason" "$pack_version" "$file"
-  echo "$CHECK_REQ $result ($severity): $reason"
+  write_osera_row "$id" "$result" "$severity" "$EXPECTED" "$observed" "$pack_version" "$file"
+  echo "$CHECK_REQ $result ($severity): $observed"
   # 6. the return: a failed required check stops the action; the severity is not read here
   if [ "$result" = fail ] && required_check; then
     return 1
@@ -330,7 +422,7 @@ record() {
 on_exit() {
   local rc=$?
   if [ "$rc" -ne 0 ] && [ -n "${CHECK_REQ:-}" ] && [ ! -f "$OSERA_RESULTS_DIR/$CHECK_REQ.json" ]; then
-    record fail "could not run: ${STEP:-the check} failed" || true
+    record fail "failed step: ${STEP:-the check}" || true
   fi
 }
 trap on_exit EXIT
